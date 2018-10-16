@@ -1,0 +1,8 @@
+name: 'WH VLB import'
+type: module
+description: 'WH VLB Import Service'
+core: 8.x
+package: 'Wirth und Horn'
+dependencies:
+  - wh_book
+  

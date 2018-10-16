@@ -1,0 +1,4 @@
+services:
+  wh_import_vlb.vlb:
+    class: Drupal\wh_import_vlb\VlbService
+    arguments: []

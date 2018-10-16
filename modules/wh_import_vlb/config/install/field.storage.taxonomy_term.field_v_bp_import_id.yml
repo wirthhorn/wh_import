@@ -1,0 +1,21 @@
+uuid: d97dd27f-04ca-4543-ae9e-694421c97f06
+langcode: de
+status: true
+dependencies:
+  module:
+    - taxonomy
+id: taxonomy_term.field_v_bp_import_id
+field_name: field_v_bp_import_id
+entity_type: taxonomy_term
+type: string
+settings:
+  max_length: 255
+  is_ascii: false
+  case_sensitive: false
+module: core
+locked: false
+cardinality: 1
+translatable: true
+indexes: {  }
+persist_with_no_fields: false
+custom_storage: false

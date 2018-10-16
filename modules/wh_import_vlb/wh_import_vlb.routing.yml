@@ -1,0 +1,10 @@
+wh_import_vlb.config_form:
+  path: '/admin/config/wh_import_vlb/config'
+  defaults:
+    _form: '\Drupal\wh_import_vlb\Form\ConfigForm'
+    _title: 'Import configuration'
+  requirements:
+    _permission: 'access administration pages'
+  options:
+    _admin_route: TRUE
+

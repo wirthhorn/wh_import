@@ -1,0 +1,7 @@
+wh_import_vlb.config_form:
+  title: 'Import Configuration'
+  route_name: wh_import_vlb.config_form
+  description: 'A description for the menu entry'
+  parent: wh_person.admin_config_wh
+  weight: 99
+

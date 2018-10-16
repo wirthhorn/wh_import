@@ -1,0 +1,34 @@
+
+wh_import_ui.import_form:
+  path: '/book/import'
+  defaults:
+    _form: '\Drupal\wh_import_ui\Form\VlbImportForm'
+    _title: 'Book Import'
+  requirements:
+    _access: 'TRUE'
+  
+
+wh_import_ui.vlb_controller_importAction:
+  path: '/wh_import_ui/importAction/vlb/{action}'
+  defaults:
+    _controller: '\Drupal\wh_import_ui\Controller\VlbController::importAction'
+    _title: 'importAction'
+  requirements:
+    _permission: 'access content'
+
+wh_import_ui.vlb_controller_importBook:
+  path: '/wh_import_ui/importBook/vlb/{nid}'
+  defaults:
+    _controller: '\Drupal\wh_import_ui\Controller\VlbController::importBook'
+    _title: 'import Book'
+  requirements:
+    _permission: 'access content'
+
+
+wh_import_ui.batch_controller_importBooks:
+  path: '/wh_import_ui/batchImport/vlb'
+  defaults:
+    _controller: '\Drupal\wh_import_ui\Controller\VlbBatchController::importBooks'
+    _title: 'import Books'
+  requirements:
+    _permission: 'access content'

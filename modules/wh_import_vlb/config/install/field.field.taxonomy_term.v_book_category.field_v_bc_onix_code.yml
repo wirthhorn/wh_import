@@ -1,0 +1,18 @@
+langcode: de
+status: true
+dependencies:
+  config:
+    - field.storage.taxonomy_term.field_v_bc_onix_code
+    - taxonomy.vocabulary.v_book_category
+id: taxonomy_term.v_book_category.field_v_bc_onix_code
+field_name: field_v_bc_onix_code
+entity_type: taxonomy_term
+bundle: v_book_category
+label: Code
+description: ''
+required: false
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: string

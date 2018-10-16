@@ -1,0 +1,7 @@
+name: 'WH import'
+type: module
+description: 'WH import modules'
+core: 8.x
+package: 'Wirth und Horn'
+dependencies:
+  - wh_book

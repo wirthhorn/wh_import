@@ -1,0 +1,24 @@
+<?php
+
+/**
+ * @file
+ * Contains wh_import_vlb.module.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function wh_import_vlb_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    // Main module help for the wh_import_vlb module.
+    case 'help.page.wh_import_vlb':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('WH Import Services') . '</p>';
+      return $output;
+
+    default:
+  }
+}
