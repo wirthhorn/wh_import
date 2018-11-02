@@ -3,7 +3,6 @@
 namespace Drupal\wh_import_vlb;
 use Drupal\node\Entity\Node;
 //use Drupal\wh_affiliate_links\GenerateAffiliateLinks;
-//use Drupal\cloudinary_stream_wrapper\StreamWrapper\CloudinaryStreamWrapper;
 
 /**
  * Class VlbService.
@@ -53,7 +52,7 @@ class VlbService
       'Knaur Balance','Fischer Kinder-und Jugendbuch E-Book','ROWOHLT Wunderlich','Knaur Balance eBook','Fischer Kinder-und Jugendtaschenbuch','Ro Ro Ro',
       'Groh','Fischer KJB','Rowohlt e-Book','Pattloch Geschenkbuch','Fischer Krüger','Rowohlt Hundertaugen','Fischer Sauerländer','Fischer Scherz','Fischer Taschenbuch',
       'Fischer TOR');
-      
+
       $search_verlage = array();
       foreach($verlage as $verlag){
         $search_verlage[] = 'vl='.$verlag;
@@ -63,101 +62,95 @@ class VlbService
       $onix_codes = array();
       //get VLB Codes
       $query = \Drupal::entityQuery('taxonomy_term')->condition('vid', 'v_book_category');
-        $v_book_category_tids = $query->execute();
-        $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
-        foreach($v_book_category_terms as $term){
-          $v_bc_onix_codes = $term->get("field_v_bc_onix_code")->getValue();
-          foreach($v_bc_onix_codes as $v_bc_onix_code){
-            $v_bc_onix_code = $v_bc_onix_code['value'];
-            if(strpos($v_bc_onix_code, '+') != false){
-              $v_bc_onix_codes = explode('+', $v_bc_onix_code);
-              $categories_th = array();
-              foreach($v_bc_onix_codes as $v_bc_onix_code){
-                $categories_th[] = 'th='.$v_bc_onix_code;
-              }
-              $categories_th_str = implode(" und ",$categories_th);
-              $onix_codes[] = '('.$categories_th_str.')';
-            }else{
-              $onix_codes[] = 'th='.$v_bc_onix_code;
+      $v_book_category_tids = $query->execute();
+      $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
+      foreach($v_book_category_terms as $term){
+        $v_bc_onix_codes = $term->get("field_v_bc_onix_code")->getValue();
+        foreach($v_bc_onix_codes as $v_bc_onix_code){
+          $v_bc_onix_code = $v_bc_onix_code['value'];
+          if(strpos($v_bc_onix_code, '+') != false){
+            $v_bc_onix_codes = explode('+', $v_bc_onix_code);
+            $categories_th = array();
+            foreach($v_bc_onix_codes as $v_bc_onix_code){
+              $categories_th[] = 'th='.$v_bc_onix_code;
             }
+            $categories_th_str = implode(" und ",$categories_th);
+            $onix_codes[] = '('.$categories_th_str.')';
+          }else{
+            $onix_codes[] = 'th='.$v_bc_onix_code;
           }
         }
-        $onix_codes_str = implode(" oder ",$onix_codes);
-        $search_str = '(('.$search_verlage_str.') und ('.$onix_codes_str.')) und db=vlb';
-      //  dpm($search_str);
-
-        $search_str = urlencode($search_str);
-
-      //$search_str = '('.$onix_codes_str.') und db=vlb';
-
-// dpm($search_str);
+      }
+      $onix_codes_str = implode(" oder ",$onix_codes);
+      $search_str = '(('.$search_verlage_str.') und ('.$onix_codes_str.')) und db=vlb';
+      $search_str = urlencode($search_str);
 
       $responseData = array();
-        $data = array();
-        
-            $client = \Drupal::httpClient();
-            $vlbMetadatenToken = $this->metadataToken;
-            $url = 'https://vlb.de/app/#search/advancedsearch/' . $search_str;
-            $url = 'https://vlb.de/v1/' . $search_str;
+      $data = array();
+      
+          $client = \Drupal::httpClient();
+          $vlbMetadatenToken = $this->metadataToken;
+          $url = 'https://vlb.de/app/#search/advancedsearch/' . $search_str;
+          $url = 'https://vlb.de/v1/' . $search_str;
+          
+          $url = 'https://api.vlb.de/api/v1/product/9783426306055/isbn13';
+          $url = 'https://api.vlb.de/api/v1/login';
+          $method = 'GET';
             
-            $url = 'https://api.vlb.de/api/v1/product/9783426306055/isbn13';
-            $url = 'https://api.vlb.de/api/v1/login';
-            $method = 'GET';
-             
-          $options = [
-            'headers' => [
-                'Authorization' => 'Bearer '.$vlbMetadatenToken,
-            ],
-        ];
+        $options = [
+          'headers' => [
+              'Authorization' => 'Bearer '.$vlbMetadatenToken,
+          ],
+      ];
 
-        $url = 'http://api.vlb.de/api/v1/products/?size=250&search='.$search_str;
+      $url = 'http://api.vlb.de/api/v1/products/?size=250&search='.$search_str;
 
-        $ean = array();
-        $total_pages = 1;
-            try {
-                $response = $client->request($method, $url, $options);
-                $code = $response->getStatusCode();
-                if ($code == 200) {
-                     $responseData = $response->getBody()->getContents();
-                     $var = json_decode($responseData, true);
-                     $total_pages = $var['totalPages'];
-                     $contents = $var['content'];
-                     $this->getEans($ean, $contents);
-                }else{
-                  watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
-                  $this->setErrorMessage("Import failed! VLB code: ".$code);
-                  return null;
-                }
-            }catch (\Exception $e) {
-                // Logs an error
-                \Drupal::logger('wh_import_vlb')->error("Import failed! Wrong vlb request. Exception: ".$e);
-                return null;
-            }
-          //next pages
-          for($page_number = 2; $page_number <= $total_pages; $page_number++ ){
-            $url = 'http://api.vlb.de/api/v1/products/?page='.$page_number.'&size=250&search='.$search_str;
-            try {
-              $response = $client->request($method, $url, $options);
-              $code = $response->getStatusCode();
-              if ($code == 200) {
-                  $responseData = $response->getBody()->getContents();
-                  $var = json_decode($responseData, true);
-                  $contents = $var['content'];
-                  $this->getEans($ean, $contents);
-              }else{
-                watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
-                $this->setErrorMessage("Import failed! VLB code: ".$code);
-                return null;
-              }
-            }catch (\Exception $e) {
-                // Logs an error
-                \Drupal::logger('wh_import_vlb')->error("Import failed! Wrong vlb request. Exception: ".$e);
-                return null;
-            }
+      $ean = array();
+      $total_pages = 1;
+      try {
+          $response = $client->request($method, $url, $options);
+          $code = $response->getStatusCode();
+          if ($code == 200) {
+                $responseData = $response->getBody()->getContents();
+                $var = json_decode($responseData, true);
+                $total_pages = $var['totalPages'];
+                $contents = $var['content'];
+                $this->getEans($ean, $contents);
+          }else{
+            watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
+            $this->setErrorMessage("Import failed! VLB code: ".$code);
+            return null;
           }
+      }catch (\Exception $e) {
+          // Logs an error
+          \Drupal::logger('wh_import_vlb')->error("Import failed! Wrong vlb request. Exception: ".$e);
+          return null;
+      }
+      //next pages
+      for($page_number = 2; $page_number <= $total_pages; $page_number++ ){
+        $url = 'http://api.vlb.de/api/v1/products/?page='.$page_number.'&size=250&search='.$search_str;
+        try {
+          $response = $client->request($method, $url, $options);
+          $code = $response->getStatusCode();
+          if ($code == 200) {
+              $responseData = $response->getBody()->getContents();
+              $var = json_decode($responseData, true);
+              $contents = $var['content'];
+              $this->getEans($ean, $contents);
+          }else{
+            watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
+            $this->setErrorMessage("Import failed! VLB code: ".$code);
+            return null;
+          }
+        }catch (\Exception $e) {
+            // Logs an error
+            \Drupal::logger('wh_import_vlb')->error("Import failed! Wrong vlb request. Exception: ".$e);
+            return null;
+        }
+      }
 
-        \Drupal::logger('wh_import_vlb')->notice("Search ok.");
-        return $ean;
+      \Drupal::logger('wh_import_vlb')->notice("Search ok.");
+      return $ean;
     }
 
     public function getEans(&$ean, $contents){
@@ -198,10 +191,12 @@ class VlbService
                     $data['biographies'] = $this->getBiographies($var['texts']);
                     $data['persons'] = $this->getPersons($var['contributors']);
                     $data['price'] = $this->getPrice($var['prices']);
-                    //$data['cover'] = $this->getCover();
+                    $data['cover'] = $this->getCover();
                     $data['press'] = $this->getPress($var['texts']);
                     $data['pages'] = $this->getPages($var['extent']);
+                    $data['binding'] = $this->getBinding($var['form']);
                     $data['publishers'] = $this->getPublishers($var['publishers']);
+                    $data['series'] = $this->getSeries($var['collections']);
                     // dpm($data);
                 }else{
                   watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
@@ -222,14 +217,33 @@ class VlbService
 
     private function getPublishers($publishers){
       $my_publishers = array();
-      $person_keys = $this->findInArray($publishers, 'type', 'A01');
-      //get all persons
-      foreach($publishers as $publisher){
+      //get all publishers
+      $publisher_keys = $this->findInArray($publishers, 'type', '01');
+      foreach($publisher_keys as $key => $value){
+        $publisher = $publishers[$value];
         $my_publisher['name'] = $publisher['name'];
         $my_publisher['id'] = $publisher['publisherId'];
         $my_publishers[] = $my_publisher;
       }
       return $my_publishers;
+    }
+
+    private function getSeries($collections){
+      $series = array();
+      //get all series
+      foreach($collections as $serie){
+        if(isset($serie['master']['type']) && ($serie['master']['type'] == 'series') && !empty($serie['master']['title'])){
+          $series[] = $serie['master']['title'];
+        }
+      }
+      return $series;
+    }
+
+    private function getBinding($form){
+      if(isset($form['type'])){
+        return $form['type'];
+      }
+      return null;
     }
 
     private function getPages($extent){
@@ -445,7 +459,7 @@ class VlbService
 
         $description = [
         'value' => $this->data['description'],
-        'format' => 'basic_html',
+        'binding' => 'basic_html',
         ];
         $node->set('field_book_description', $description);
 
@@ -453,6 +467,12 @@ class VlbService
         $node->status = 1;
         
         //set other fields
+        if(isset($this->data['binding'])){
+          $this->setBinding($node);
+        }
+        if(isset($this->data['series'])){
+          $this->setSeries($node);
+        }
         if(isset($this->data['subtitle'])){
           $node->set('field_book_subtitle', $this->data['subtitle']);
         }
@@ -505,14 +525,16 @@ class VlbService
       $publisher_tids = array();
       //Create Persons(s)
       foreach($this->data['publishers'] as $publisher){
-        //check, if person already exists
+        //check, if publisher-term already exists
         $options = ['field_v_bp_import_id' => $publisher['id']];
-        $publishers = \Drupal::entityTypeManager()
+        $publisher_terms = \Drupal::entityTypeManager()
             ->getStorage('taxonomy_term')
             ->loadByProperties($options);
-        if(empty($publishers)){
+        $publisher_term = reset($publisher_terms);
+        //create term, if not exists
+        if($publisher_term === FALSE){
           try{
-            $term = \Drupal\taxonomy\Entity\Term::create(array(
+              $term = \Drupal\taxonomy\Entity\Term::create(array(
               'parent' => array(),
               'name' => $publisher['name'],
               'field_v_bp_import_id' => $publisher['id'],
@@ -526,12 +548,73 @@ class VlbService
             return null;
           }
         }else{
-          foreach ($publishers as $key => $term){
-             $publisher_tids[] = $term->id();
-          }
+          $publisher_tids[] = $publisher_term->id();
         }
       }
       $node->set('field_book_publisher', $publisher_tids);
+    }
+
+    private function setSeries(&$node){
+      $book_series_term_ids = array();
+      foreach($this->data['series'] as $serie_title){
+        //check, if serie-term already exists
+        $options = ['name' => $serie_title];
+        $book_series_terms = \Drupal::entityTypeManager()
+            ->getStorage('taxonomy_term')
+            ->loadByProperties($options);
+            $book_series_term = reset($book_series_terms);
+        //create term, if not exists
+        if($book_series_term === FALSE){
+          try{
+              $term = \Drupal\taxonomy\Entity\Term::create(array(
+              'parent' => array(),
+              'name' => $serie_title,
+              'vid' => 'v_book_series',
+            ));
+            $term->save();
+            $book_series_term_ids[] = $term->id();
+          }catch(\Exception $e){
+            watchdog_exception('Bookimport - nodecreate series', $e);
+            $this->setErrorMessage("Import failed! Cannot creat series for the book.");
+            return null;
+          }
+        }else{
+          $book_series_term_ids[] = $book_series_term->id();
+        }
+        
+      }
+      $node->set('field_book_v_bs_series', $book_series_term_ids);
+    }
+
+    private function setBinding(&$node){
+        $book_binding_term_id = 0;
+        //check, if binding-term already exists
+        $options = ['field_v_bb_onix_type' => $this->data['binding'] ];
+        $book_binding_terms = \Drupal::entityTypeManager()
+            ->getStorage('taxonomy_term')
+            ->loadByProperties($options);
+        $book_binding_term = reset($book_binding_terms);
+        //create term, if not exists
+        if($book_binding_term === FALSE){
+          try{
+              $term = \Drupal\taxonomy\Entity\Term::create(array(
+              'parent' => array(),
+              'name' => 'unknown',
+              'field_v_bb_onix_type' => $this->data['binding'],
+              'vid' => 'v_book_bindings',
+            ));
+            $term->save();
+            $book_binding_term_id = $term->id();
+          }catch(\Exception $e){
+            watchdog_exception('Bookimport - nodecreate binding', $e);
+            $this->setErrorMessage("Import failed! Cannot creat binding for the book.");
+            return null;
+          }
+        }else{
+          $book_binding_term_id = $book_binding_term->id();
+        }
+     
+      $node->set('field_book_v_bb_binding', $book_binding_term_id);
     }
 
     private function setPersonValues(){
@@ -613,8 +696,6 @@ class VlbService
 
     private function createBookNode()
     {
-        
-
         //check, if book already exists
         $books = \Drupal::entityTypeManager()
         ->getStorage('node')

@@ -3,5 +3,3 @@ type: module
 description: 'WH Import User Interface'
 core: 8.x
 package: 'Wirth und Horn'
-dependencies:
-  - wh_import_vlb

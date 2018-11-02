@@ -1,0 +1,21 @@
+uuid: 3695697e-84d3-427e-a6b1-dbcf21b3577a
+langcode: de
+status: true
+dependencies:
+  module:
+    - taxonomy
+id: taxonomy_term.field_v_bb_onix_type
+field_name: field_v_bb_onix_type
+entity_type: taxonomy_term
+type: string
+settings:
+  max_length: 60
+  is_ascii: false
+  case_sensitive: false
+module: core
+locked: false
+cardinality: -1
+translatable: true
+indexes: {  }
+persist_with_no_fields: false
+custom_storage: false

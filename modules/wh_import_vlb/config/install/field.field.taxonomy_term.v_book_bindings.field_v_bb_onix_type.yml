@@ -1,0 +1,19 @@
+uuid: 3c089345-3d5d-4fa2-a2a0-f2922d892f92
+langcode: de
+status: true
+dependencies:
+  config:
+    - field.storage.taxonomy_term.field_v_bb_onix_type
+    - taxonomy.vocabulary.v_book_bindings
+id: taxonomy_term.v_book_bindings.field_v_bb_onix_type
+field_name: field_v_bb_onix_type
+entity_type: taxonomy_term
+bundle: v_book_bindings
+label: 'Onix Type'
+description: ''
+required: false
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: string
