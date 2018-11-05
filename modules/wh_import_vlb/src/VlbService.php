@@ -197,6 +197,7 @@ class VlbService
                     $data['binding'] = $this->getBinding($var['form']);
                     $data['publishers'] = $this->getPublishers($var['publishers']);
                     $data['series'] = $this->getSeries($var['collections']);
+                    $data['availability'] = $var['availabilityStatusCode'];
                     // dpm($data);
                 }else{
                   watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
@@ -485,6 +486,8 @@ class VlbService
         if(!empty($this->data['press'])){
           $node->set('field_book_press', $this->data['press']);
         }
+
+        $this->setAvailability($node);
         $this->setPublishers($node);
         $this->setCategories($node);
         if($this->data['publication_date'] != false){
@@ -518,6 +521,32 @@ class VlbService
         }
       }
       return $biography;
+    }
+
+    private function setAvailability(&$node){
+      $personNodes = array();
+      $publisher_tids = array();
+      //Create Persons(s)
+      $code = $this->data['availability'];
+        //check, if publisher-term already exists
+        $options = ['field_v_ba_code' => $code];
+        $availability_terms = \Drupal::entityTypeManager()
+            ->getStorage('taxonomy_term')
+            ->loadByProperties($options);
+            $availability_term = reset($availability_terms);
+        //add code, if not exists
+        if($availability_term === FALSE){
+          //get term 'Nicht Lieferbar'
+          $query = \Drupal::entityQuery('taxonomy_term')->condition('field_v_ba_code', 'IP','<>');
+          $v_ba_tids = $query->execute();
+          $v_ba_tid = reset($v_ba_tids);
+          $availability_term = \Drupal\taxonomy\Entity\Term::load($v_ba_tid);
+          //add code
+          $availability_term->field_v_ba_code[] = $code;
+          $availability_term->save();
+        }
+      $availability_tid = $availability_term->id();
+      $node->set('field_book_v_ba_availability', $availability_tid);
     }
 
     private function setPublishers(&$node){
