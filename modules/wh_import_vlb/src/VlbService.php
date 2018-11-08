@@ -117,7 +117,7 @@ class VlbService
                 $contents = $var['content'];
                 $this->getEans($ean, $contents);
           }else{
-            watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
+            watchdog_exception('wh_import_vlb', "Import failed! VLB code: ".$code);
             $this->setErrorMessage("Import failed! VLB code: ".$code);
             return null;
           }
@@ -138,7 +138,7 @@ class VlbService
               $contents = $var['content'];
               $this->getEans($ean, $contents);
           }else{
-            watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
+            watchdog_exception('wh_import_vlb', "Import failed! VLB code: ".$code);
             $this->setErrorMessage("Import failed! VLB code: ".$code);
             return null;
           }
@@ -191,6 +191,7 @@ class VlbService
                     $data['biographies'] = $this->getBiographies($var['texts']);
                     $data['persons'] = $this->getPersons($var['contributors']);
                     $data['price'] = $this->getPrice($var['prices']);
+                    $data['prices'] = $this->getPrices($var['prices']);
                     $data['cover'] = $this->getCover();
                     $data['press'] = $this->getPress($var['texts']);
                     $data['pages'] = $this->getPages($var['extent']);
@@ -200,7 +201,7 @@ class VlbService
                     $data['availability'] = $var['availabilityStatusCode'];
                     // dpm($data);
                 }else{
-                  watchdog_exception('Bookimport - vlb', "Import failed! VLB code: ".$code);
+                  watchdog_exception('wh_import_vlb', "Import failed! VLB code: ".$code);
                   $this->setErrorMessage("Import failed! VLB code: ".$code);
                   return null;
                 }
@@ -314,6 +315,26 @@ class VlbService
       return $german_price;
     }
 
+    private function getPrices($prices){
+      $german_prices = array();
+      $price_keys = $this->findInArray($prices, 'type', '04');
+      foreach($price_keys as $key => $value){
+        $price = $prices[$value];
+        if($price['country'] == 'DE'){
+          $german_prices[]['value'] = $price['value'];
+          $german_prices[]['validUntil'] = $price['validUntil'];
+          $german_prices[]['validFrom'] = $price['validFrom'];
+        }
+      }
+      //check price logik
+      // foreach($german_prices as $german_price){
+      //     $german_price
+      //   }
+      
+      
+      return $german_prices;
+    }
+
     private function getDescription($texts){
       $bestResult = array();
       foreach($texts as $key => $value ){
@@ -393,7 +414,7 @@ class VlbService
           $file['fid'] = $local->id();
         }
       } catch (RequestException $e) {
-          watchdog_exception('jsonapi', $e);
+          watchdog_exception('wh_import_vlb', $e);
       }
       return $file;
     }
@@ -496,13 +517,13 @@ class VlbService
         $this->setCover($node);
         
         $node->set('field_book_ean', $this->ean.'');
-        //todo
-        //$affiliateLink = GenerateAffiliateLinks::aws_itemlookup($ean);
-        //$node->set('field_affiliate_amazon', $affiliateLink);
+
+        //Here is the offer for other modules to change the node, like wh_affiliate_links
+        \Drupal::moduleHandler()->alter('change_node', $node);
         
       }catch(\Exception $e){
-        \Drupal::logger('wh_import_vlb')->error("Import failed! Cannot set book-values.! Book with EAN ".$this->ean);
-        watchdog_exception('Bookimport - nodecreate', $e);
+        \Drupal::logger('wh_import_vlb')->error("Import failed! Cannot set book-values! Book with EAN ".$this->ean);
+        watchdog_exception('wh_import_vlb', $e);
         $this->setErrorMessage("Import failed! Cannot create book.");
         return null;
       }
@@ -572,7 +593,7 @@ class VlbService
             $term->save();
             $publisher_tids[] = $term->id();
           }catch(\Exception $e){
-            watchdog_exception('Bookimport - nodecreate publisher', $e);
+            watchdog_exception('wh_import_vlb', $e);
             $this->setErrorMessage("Import failed! Cannot creat publisher for the book.");
             return null;
           }
@@ -603,7 +624,7 @@ class VlbService
             $term->save();
             $book_series_term_ids[] = $term->id();
           }catch(\Exception $e){
-            watchdog_exception('Bookimport - nodecreate series', $e);
+            watchdog_exception('wh_import_vlb', $e);
             $this->setErrorMessage("Import failed! Cannot creat series for the book.");
             return null;
           }
@@ -635,7 +656,7 @@ class VlbService
             $term->save();
             $book_binding_term_id = $term->id();
           }catch(\Exception $e){
-            watchdog_exception('Bookimport - nodecreate binding', $e);
+            watchdog_exception('wh_import_vlb', $e);
             $this->setErrorMessage("Import failed! Cannot creat binding for the book.");
             return null;
           }
@@ -678,7 +699,7 @@ class VlbService
             $personNode['role'] = $role;
             $personNodes[] = $personNode;
           }catch(\Exception $e){
-            watchdog_exception('Bookimport - nodecreate author', $e);
+            watchdog_exception('wh_import_vlb', $e);
             $this->setErrorMessage("Import failed! Cannot creat author for the book.");
             return null;
           }
@@ -741,7 +762,7 @@ class VlbService
             $this->setBookValues($node);
           }catch(\Exception $e){
             \Drupal::logger('wh_import_vlb')->error("Import failed! Cannot create/set book-values.! Book with EAN ".$this->ean);
-            watchdog_exception('Bookimport - nodecreate', $e);
+            watchdog_exception('wh_import_vlb', $e);
             $this->setErrorMessage("Import failed! Cannot create book.");
             return null;
           }
