@@ -2,7 +2,6 @@
 
 namespace Drupal\wh_import_vlb;
 use Drupal\node\Entity\Node;
-//use Drupal\wh_affiliate_links\GenerateAffiliateLinks;
 
 /**
  * Class VlbService.
@@ -10,12 +9,12 @@ use Drupal\node\Entity\Node;
 class VlbService
 {
 
-    protected $error_message = '';
     protected $metaData;
     protected $ean;
     protected $metadataToken;
     protected $coverToken;
     protected $data;
+    protected $timestamp_now;
 
     /**
      * Constructs a new VlbService object.
@@ -42,12 +41,15 @@ class VlbService
       $config = \Drupal::config('wh_import_vlb.config');
       $this->metadataToken  = $config->get('metadata_token');
       $this->coverToken  = $config->get('cover_token');
+
+      $now = new \DateTime("now");
+      $this->timestamp_now =  $now->getTimestamp();
     }
 
     public function getAllEans(){      
-      $verlage = array('Droemer Knaur','S. Fischer','Argon Droemer','S.Fischer','Rowohlt','Kiepenheuer & Witsch','ArgonDroemer eBook',
-      'Fischer digiBook','Rowohlt Berlin','E-Books im Verlag Kiepenheuer & Witsch','Argon Sauerländer Audio ein Imprint von Argon Droemer Taschenbuch',
-      'Fischer Digital','ROWOHLT Kindler','Argon Balance ein Imprint v. Argon Verlag Knaur',
+      $verlage = array('Droemer Knaur','S. Fischer','Argon','Droemer','S.Fischer','Rowohlt','Kiepenheuer & Witsch','Droemer eBook',
+      'Fischer digiBook','Rowohlt Berlin','E-Books im Verlag Kiepenheuer & Witsch','Argon Sauerländer Audio ein Imprint von Argon', 'Droemer Taschenbuch',
+      'Fischer Digital','ROWOHLT Kindler','Argon Balance ein Imprint v. Argon Verlag', 'Knaur',
       'Fischer E-Books','ROWOHLT Polaris','Knaur eBook','Fischer FJB','ROWOHLT Repertoire','Knaur Taschenbuch','Fischer HC','ROWOHLT Taschenbuch',
       'Knaur Balance','Fischer Kinder-und Jugendbuch E-Book','ROWOHLT Wunderlich','Knaur Balance eBook','Fischer Kinder-und Jugendtaschenbuch','Ro Ro Ro',
       'Groh','Fischer KJB','Rowohlt e-Book','Pattloch Geschenkbuch','Fischer Krüger','Rowohlt Hundertaugen','Fischer Sauerländer','Fischer Scherz','Fischer Taschenbuch',
@@ -117,16 +119,14 @@ class VlbService
                 $contents = $var['content'];
                 $this->getEans($ean, $contents);
           }else{
-            watchdog_exception('wh_import_vlb', "Import failed! VLB code: ".$code);
-            $this->setErrorMessage("Import failed! VLB code: ".$code);
-            return null;
+            throw new \Exception("Import failed! VLB code: ".$code);
           }
       }catch (\Exception $e) {
           // Logs an error
-          \Drupal::logger('wh_import_vlb')->error("Import failed! Wrong vlb request. Exception: ".$e);
-          return null;
+          throw new \Exception("Import failed! Wrong vlb request. \Exception: ".' - '.$e->getMessage());
       }
       //next pages
+      //$total_pages = 1;
       for($page_number = 2; $page_number <= $total_pages; $page_number++ ){
         $url = 'http://api.vlb.de/api/v1/products/?page='.$page_number.'&size=250&search='.$search_str;
         try {
@@ -138,14 +138,11 @@ class VlbService
               $contents = $var['content'];
               $this->getEans($ean, $contents);
           }else{
-            watchdog_exception('wh_import_vlb', "Import failed! VLB code: ".$code);
-            $this->setErrorMessage("Import failed! VLB code: ".$code);
-            return null;
+            throw new \Exception("Import failed! VLB code: ".$code);
           }
         }catch (\Exception $e) {
             // Logs an error
-            \Drupal::logger('wh_import_vlb')->error("Import failed! Wrong vlb request. Exception: ".$e);
-            return null;
+            throw new \Exception("Import failed! Wrong vlb request. \Exception: ".' - '.$e->getMessage());
         }
       }
 
@@ -191,8 +188,7 @@ class VlbService
                     $data['biographies'] = $this->getBiographies($var['texts']);
                     $data['persons'] = $this->getPersons($var['contributors']);
                     $data['price'] = $this->getPrice($var['prices']);
-                    $data['prices'] = $this->getPrices($var['prices']);
-                    $data['cover'] = $this->getCover();
+                    $data['cover'] = $this->getCover('l');
                     $data['press'] = $this->getPress($var['texts']);
                     $data['pages'] = $this->getPages($var['extent']);
                     $data['binding'] = $this->getBinding($var['form']);
@@ -201,15 +197,11 @@ class VlbService
                     $data['availability'] = $var['availabilityStatusCode'];
                     // dpm($data);
                 }else{
-                  watchdog_exception('wh_import_vlb', "Import failed! VLB code: ".$code);
-                  $this->setErrorMessage("Import failed! VLB code: ".$code);
-                  return null;
+                  throw new \Exception("Import failed! VLB code: ".$code);
                 }
             } catch (\Exception $e) {
                 // Logs an error
-                \Drupal::logger('wh_import_vlb')->error("Import failed! Wrong vlb request. Exception: ".$e);
-                return null;
-                //$this->setErrorMessage("import failed for " . $ean . '<pre>' . var_export($responseData, true) . '</pre>');
+                throw new \Exception("Import failed! Wrong vlb request. \Exception: ".' - '.$e->getMessage());
             }
         }
         $this->data = $data;
@@ -303,36 +295,106 @@ class VlbService
       return $authors;
     }
 
-    private function getPrice($prices){
-      $german_price = 0;
-      $price_keys = $this->findInArray($prices, 'type', '04');
-      foreach($price_keys as $key => $value){
-        $price = $prices[$value];
-        if($price['country'] == 'DE'){
-          $german_price = $price['value'];
-        }
+    //wandelt deutsches datum t.m.y in timestamp um
+    private function timestampFromString($de_date_string){
+      $timestamp = null;
+      $date = \DateTime::createFromFormat('d.m.Y', $de_date_string);
+      if($date){
+        $timestamp = $date->getTimestamp();
+      }elseif($de_date_string != null){
+        throw new \Exception("Ungültiges VLB-Datum: ".$de_date_string);
+        // dpm($de_date_string);
       }
-      return $german_price;
+      return $timestamp;
     }
 
-    private function getPrices($prices){
+    private function getPrice($prices){
+      $price = array();
       $german_prices = array();
-      $price_keys = $this->findInArray($prices, 'type', '04');
+      $price_keys_04 = $this->findInArray($prices, 'type', '04');
+      $price_keys_02 = $this->findInArray($prices, 'type', '02');
+      $price_keys = array_merge($price_keys_04, $price_keys_02);
+
+      // dpm('---------------------------------------------------------------------------------------------------');
+      // dpm('---------------------' .$this->ean. ': ---------------------------------------------------------------');
+
       foreach($price_keys as $key => $value){
         $price = $prices[$value];
         if($price['country'] == 'DE'){
-          $german_prices[]['value'] = $price['value'];
-          $german_prices[]['validUntil'] = $price['validUntil'];
-          $german_prices[]['validFrom'] = $price['validFrom'];
+          $german_prices[$key]['value'] = $price['value'];
+          $german_prices[$key]['until_date'] = $this->timestampFromString($price['validUntil']);
+          $german_prices[$key]['from_date'] = $this->timestampFromString($price['validFrom']);
+          
+          // dpm('$german_prices['.$key.'][until_date]: '.$price['validUntil']);
+          // dpm('$german_prices['.$key.'][from_date]: '.$price['validFrom']);
+          // dpm('$german_prices['.$key.'][value]: '.$price['value']);
+          // dpm('.........................................');
         }
       }
-      //check price logik
-      // foreach($german_prices as $german_price){
-      //     $german_price
-      //   }
-      
-      
-      return $german_prices;
+      $price_now_array = array();
+      //get price from now
+      foreach($german_prices as $key => $german_price){
+        if((isset($german_price['until_date'])) && (isset($german_price['from_date'])) && ($this->timestamp_now < $german_price['until_date']) && ($this->timestamp_now > $german_price['from_date'])){
+          //from_date is in the past and until_date is in the future
+          $price_now_array[] = $german_price['value'];
+          // dpm('$german_prices - between: '.$key. ' - '.$german_price['value']);
+        }elseif(isset($german_price['until_date']) && ($this->timestamp_now < $german_price['until_date']) && (!isset($german_price['from_date']))){
+          //until_date is in the future and no from_date
+          $price_now_array[] = $german_price['value'];
+          // dpm('$german_prices - until_date: '.$key. ' - '.$german_price['value']);
+        }elseif(isset($german_price['from_date']) && ($this->timestamp_now > $german_price['from_date']) && (!isset($german_price['until_date']))){
+          //from_date is in the past  and no until_date
+          $price_now_array[] = $german_price['value'];
+          // dpm('$german_prices - from_date: '.$key. ' - '.$german_price['value']);
+        }elseif((!isset($german_price['until_date'])) && (!isset($german_price['from_date']))){
+          //no date is set
+          $price_now_array[] = $german_price['value'];
+        }
+      }
+      //get lowest price
+      $price_now = min($price_now_array);
+      if(!$price_now){
+        $price_now = 0;
+      }
+      // dpm('$price_now: '.$price_now);
+      // dpm('.........................................');
+      return $price_now;
+    }
+
+
+    private function getOldPriceFromTypo3(){
+      $price_old_typo3 = 0;
+
+      //connect to db
+      \Drupal\Core\Database\Database::setActiveConnection('migration');
+      $db = \Drupal\Core\Database\Database::getConnection();
+
+      //get book-prices from ean, sorted by highest prices
+      $book_table = "tx_sysglibrary_domain_model_book";
+      $price_table = 'tx_sysglibrary_domain_model_price';
+      $sql = "SELECT $price_table.price, $price_table.valid_to FROM $book_table INNER JOIN $price_table ON $book_table.uid = $price_table.book WHERE $price_table.deleted = 0 and $book_table.ean = $this->ean ORDER BY $price_table.price DESC";
+      //  dpm($sql);
+      $query = $db->query($sql);
+      $records = $query->fetchAll();
+      // dpm('count($records): '.count($records));
+      //get highest price and check date (rekursiv)
+      foreach ($records as &$record){
+        //price in past?
+        // dpm('isPriceInPast?: '.$record->price);
+        $typo3_price = $record->price;
+        if((!empty($record->valid_to)) && ($this->timestamp_now > $record->valid_to)){
+          //set typo3-price
+          $price_old_typo3 = $record->price;
+          // dpm($price_old_typo3);
+          break;
+        }
+      }
+      // dpm('$price_old_typo3 '.$price_old_typo3);
+
+      //set default db
+      db_set_active();
+
+      return floatval($price_old_typo3);
     }
 
     private function getDescription($texts){
@@ -360,6 +422,17 @@ class VlbService
       return $title;
     }
 
+    private function isSpecificBook($ean){
+      $books = \Drupal::entityTypeManager()
+        ->getStorage('node')
+        ->loadByProperties(['field_book_ean' => $ean, 'field_book_price' => 0]);
+        if(count($books) >= 1){
+         return true;
+        }
+        return false;
+    }
+
+
     private function bookExists($ean){
       $books = \Drupal::entityTypeManager()
         ->getStorage('node')
@@ -379,7 +452,7 @@ class VlbService
       return array_unique($category_codes);
     }
 
-    private function getCover(){
+    private function getCover($size){
       $file = array();
 
       // Create the styles directory and ensure it's writable.
@@ -391,7 +464,7 @@ class VlbService
       $dir_ok = file_prepare_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
 
       $vlbCoverToken = $this->coverToken;
-      $remote_file_path = 'https://api.vlb.de/api/v1/cover/'.$this->ean.'/l';
+      $remote_file_path = 'https://api.vlb.de/api/v1/cover/'.$this->ean.'/'.$size;
 
       $options = [
           'headers' => [
@@ -402,7 +475,6 @@ class VlbService
       // Destination file to download
       $destination = $directory.'/cover_'.$this->ean.'.jpg';
       $client = \Drupal::httpClient();
-
       try {
         $response = $client->request('GET', $remote_file_path, $options);
         $code = $response->getStatusCode();
@@ -412,9 +484,11 @@ class VlbService
           $managed = true;
           $local = $managed ? file_save_data($data, $destination, FILE_EXISTS_REPLACE) : file_unmanaged_save_data($data, $path, $replace);
           $file['fid'] = $local->id();
+        }else{
+          throw new \Exception("Cover-Import failed! Book with EAN ".$this->ean." error-code: ".$code);
         }
       } catch (RequestException $e) {
-          watchdog_exception('wh_import_vlb', $e);
+          throw new \Exception("Cover-Import failed! Book with EAN ".$this->ean." Exception: ".$e->getMessage());
       }
       return $file;
     }
@@ -444,10 +518,9 @@ class VlbService
         ->getStorage('node')
         ->loadByProperties(['field_book_ean' => $this->ean]);
         if(empty($books) || count($books) > 1){
-          $this->setErrorMessage("Import failed! Book with EAN ".$this->ean." exists ".count($books)."-times");
           // Logs an error
           \Drupal::logger('wh_import_vlb')->error("Import failed! Book with EAN ".$this->ean." exists ".count($books)."-times");
-          return null;
+          throw new \Exception("Import failed! Book with EAN ".$this->ean." exists ".count($books)."-times");
         }
         $book = reset($books);
         $this->setBookValues($book);
@@ -470,20 +543,28 @@ class VlbService
       try{
         $node->set('title', $this->data['title']);
 
-        $personNodes = $this->setPersonValues();
-        $persons = array();
-        foreach($personNodes as $personNode){
-          $person['target_id'] = $personNode['nid'];
-          $person['value'] = $personNode['role'];
-          $persons[] = $person;
+        //person
+        if(isset($this->data['persons'])){
+          $personNodes = $this->setPersonValues();
+          $persons = array();
+          $names_for_facets = array();
+          foreach($personNodes as $personNode){
+            $person['target_id'] = $personNode['nid'];
+            $person['value'] = $personNode['role'];
+            $persons[] = $person;
+            $names_for_facets[] = $personNode['name_for_facets'];
+          }
+          $node->set('field_book_person', $persons);
+          //workaround for facets-filter
+          $node->set('field_book_person_facets', $names_for_facets);
         }
-        $node->set('field_book_person', $persons);
-
-        $description = [
-        'value' => $this->data['description'],
-        'binding' => 'basic_html',
-        ];
-        $node->set('field_book_description', $description);
+        if(isset($this->data['description'])){
+          $description = [
+          'value' => $this->data['description'],
+          'binding' => 'basic_html',
+          ];
+          $node->set('field_book_description', $description);
+        }
 
         $node->set('uid', \Drupal::currentUser()->id());
         $node->status = 1;
@@ -501,20 +582,28 @@ class VlbService
         if(isset($this->data['pages']) && $this->data['pages'] != null){
           $node->set('field_book_pages', $this->data['pages']);
         }
-        if(!empty($this->data['price'])){
-          $node->set('field_book_price', $this->data['price']);
-        }
         if(!empty($this->data['press'])){
           $node->set('field_book_press', $this->data['press']);
         }
 
-        $this->setAvailability($node);
-        $this->setPublishers($node);
-        $this->setCategories($node);
-        if($this->data['publication_date'] != false){
+        if(!empty($this->data['price'])){
+          $this->setPrices($node);
+        }
+        if(isset($this->data['availability'])){
+          $this->setAvailability($node);
+        }
+        if(isset($this->data['publishers'])){
+          $this->setPublishers($node);
+        }
+        if(isset($this->data['category_codes'])){
+          $this->setCategories($node);
+        }
+        if(isset($this->data['publication_date'])){
           $node->field_book_release_date->value = $this->data['publication_date'];
         }
-        $this->setCover($node);
+        if(isset($this->data['cover'])){
+          $this->setCover($node);
+        }
         
         $node->set('field_book_ean', $this->ean.'');
 
@@ -522,10 +611,7 @@ class VlbService
         \Drupal::moduleHandler()->alter('change_node', $node);
         
       }catch(\Exception $e){
-        \Drupal::logger('wh_import_vlb')->error("Import failed! Cannot set book-values! Book with EAN ".$this->ean);
-        watchdog_exception('wh_import_vlb', $e);
-        $this->setErrorMessage("Import failed! Cannot create book.");
-        return null;
+        throw new \Exception("Import failed! Cannot set book-values! Book with EAN ".$this->ean.' - '.$e->getMessage());
       }
       \Drupal::logger('wh_import_vlb')->debug("Re/Import success! Book with EAN ".$this->ean." re/imported");
     }
@@ -542,6 +628,57 @@ class VlbService
         }
       }
       return $biography;
+    }
+
+    private function setPrices(&$node){
+      $price_old = floatval($node->field_book_old_price->value);
+
+      //ceep care of old prices from typo3
+      $price_old_typo3 = $this->getOldPriceFromTypo3();
+      if((!is_null($price_old_typo3)) && (isset($price_old)) && ($price_old_typo3 > $price_old)){
+        // dpm('set $price_old from typo3 - ($price_old_typo3 > $price_old): '.$price_old_typo3);
+        $price_old = $price_old_typo3;
+        $node->set('field_book_old_price', $price_old_typo3);
+      }elseif((!is_null($price_old_typo3)) && (!isset($price_old))){
+        // dpm('set $price_old from typo3 - (!isset($price_old)): '.$price_old_typo3);
+        $price_old = $price_old_typo3;
+        $node->set('field_book_old_price', $price_old_typo3);
+      }
+
+      $price_until_now = floatval($node->field_book_price->value);
+
+      if((!is_null($price_old_typo3)) && (isset($price_until_now)) && ($price_until_now > $price_old_typo3) ){
+        //correct price
+        $price_until_now = $price_old_typo3;
+        // dpm('korrect price: $price_until_now = '.$price_until_now.'-------------------------------------------------------------------------------------------------------');
+      }
+
+      if((!is_null($price_old_typo3)) && ($price_old_typo3 > floatval($this->data["price"]))){
+        \Drupal::logger('wh_import_batch')->notice("Import old value from typo3 ".$price_old_typo3.' / '.$this->data["price"].' - EAN: '.$this->ean);
+      }
+
+      if(isset($this->data['price'])){
+        $price_new = floatval($this->data['price']);
+        $node->set('field_book_price', $this->data['price']);
+        // dpm('$price_new: '.$price_new);
+      }
+
+      if((isset($price_new)) && (isset($price_old)) && ($price_new < $price_old)){
+        //preisreduzierung -> do nothing - old price remains
+      }elseif((isset($price_new)) && (isset($price_until_now)) && ($price_new < $price_until_now)){
+        //preisreduzierung -> old price did not exist
+        $node->set('field_book_old_price', $price_until_now);
+      }else{
+        unset($node->field_book_old_price);
+      }
+      if(!empty($price_old)){
+        // dpm('--------------------!empty($price_old)-------------------------------------------------------------------------------------------------------------------------');
+      }
+      // dpm('$price_old: '.$price_old);
+      // dpm('$price_until_now: '.$price_until_now);
+      // dpm('field_book_old_price: '.$node->field_book_old_price->value);
+      // dpm('field_book_price: '.$node->field_book_price->value);
+      // dpm('----------------------------------------------------------------------------------------');
     }
 
     private function setAvailability(&$node){
@@ -593,9 +730,7 @@ class VlbService
             $term->save();
             $publisher_tids[] = $term->id();
           }catch(\Exception $e){
-            watchdog_exception('wh_import_vlb', $e);
-            $this->setErrorMessage("Import failed! Cannot creat publisher for the book.");
-            return null;
+            throw new \Exception("Import failed! Cannot creat publisher for the book.".' - '.$e->getMessage());
           }
         }else{
           $publisher_tids[] = $publisher_term->id();
@@ -624,9 +759,7 @@ class VlbService
             $term->save();
             $book_series_term_ids[] = $term->id();
           }catch(\Exception $e){
-            watchdog_exception('wh_import_vlb', $e);
-            $this->setErrorMessage("Import failed! Cannot creat series for the book.");
-            return null;
+            throw new \Exception("Import failed! Cannot creat series for the book. - ".$e->message());
           }
         }else{
           $book_series_term_ids[] = $book_series_term->id();
@@ -656,9 +789,7 @@ class VlbService
             $term->save();
             $book_binding_term_id = $term->id();
           }catch(\Exception $e){
-            watchdog_exception('wh_import_vlb', $e);
-            $this->setErrorMessage("Import failed! Cannot creat binding for the book.");
-            return null;
+            throw new \Exception("Import failed! Cannot creat binding for the book.".' - '.$e->getMessage());
           }
         }else{
           $book_binding_term_id = $book_binding_term->id();
@@ -666,6 +797,8 @@ class VlbService
      
       $node->set('field_book_v_bb_binding', $book_binding_term_id);
     }
+
+
 
     private function setPersonValues(){
       $personNodes = array();
@@ -697,11 +830,10 @@ class VlbService
             $node->save();
             $personNode['nid'] = $node->id();
             $personNode['role'] = $role;
+            $personNode['name_for_facets'] = $person['firstName'] . ' ' . $person['lastName'];
             $personNodes[] = $personNode;
           }catch(\Exception $e){
-            watchdog_exception('wh_import_vlb', $e);
-            $this->setErrorMessage("Import failed! Cannot creat author for the book.");
-            return null;
+            throw new \Exception("Import failed! Cannot creat author for the book.".' - '.$e->getMessage());
           }
         }else{
           foreach ($persons as $key => $node){
@@ -723,6 +855,7 @@ class VlbService
             }
             $personNode['nid'] = $node->id();
             $personNode['role'] = $role;
+            $personNode['name_for_facets'] = $person['firstName'] . ' ' . $person['lastName'];
             $personNodes[] = $personNode;
             break;
           }
@@ -736,6 +869,9 @@ class VlbService
       if(empty($this->data)){
         return null;
       }
+      // if(!$this->isSpecificBook($this->ean)){
+      //   return null;
+      // }
       if($this->bookExists($this->ean)){
         $node = $this->updateBookNode();
       }else{
@@ -751,8 +887,7 @@ class VlbService
         ->getStorage('node')
         ->loadByProperties(['field_book_ean' => $this->ean]);
         if(!empty($books)){
-          $this->setErrorMessage("Import failed! Book with EAN ".$this->ean." already exists.");
-          return null;
+          throw new \Exception("Import failed! Book with EAN ".$this->ean." already exists.");
         }
 
         if(empty($books)){
@@ -761,17 +896,16 @@ class VlbService
             $node = Node::create(['type' => 'book']);
             $this->setBookValues($node);
           }catch(\Exception $e){
-            \Drupal::logger('wh_import_vlb')->error("Import failed! Cannot create/set book-values.! Book with EAN ".$this->ean);
-            watchdog_exception('wh_import_vlb', $e);
-            $this->setErrorMessage("Import failed! Cannot create book.");
-            return null;
+            throw new \Exception("Import failed! Cannot create/set book-values.! Book with EAN ".$this->ean.' - '.$e->getMessage());
           }
         }
 
         $this->setBookValues($node);
-        if(count($node->field_book_category->getValue()) == 0){
-          \Drupal::logger('wh_import_vlb')->error("Import failed! False categories! Book with EAN ".$this->ean);
-          return null;
+        if(!empty($this->data['category_codes'])){
+          if(count($node->field_book_category->getValue()) == 0){
+            \Drupal::logger('wh_import_vlb')->error("Import failed! False categories! Book with EAN ".$this->ean);
+            throw new \Exception("Import failed! False categories! Book with EAN ".$this->ean);
+          }
         }
         $node->enforceIsNew();
         $node->save();
@@ -841,16 +975,5 @@ class VlbService
       }
     }
 
-    public function getErrorMessage()
-    {
-        //
-        return $this->error_message;
-    }
-
-    private function setErrorMessage($msg)
-    {
-        //
-        $this->error_message = $msg;
-    }
 
 }
