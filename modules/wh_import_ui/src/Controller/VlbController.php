@@ -51,11 +51,25 @@ class VlbController extends ControllerBase {
   }
   
   public static function importBook($ean, &$context = NULL) {
-    $import_service = \Drupal::service('wh_import_vlb.vlb');
-    $data = $import_service->getBookData($ean);
-    if(!empty($data)){
-      $import_service->reImportBook();
-      \Drupal::logger('wh_import_ui')->notice("Node imported EAN: ".$ean);
+    // dpm($context);
+    try{
+      //sleep for 5 seconds
+      // if (count($context) % 1000 == 0) { 
+      //   sleep(10);
+      // }
+      sleep(1);
+      $import_service = \Drupal::service('wh_import_vlb.vlb');
+      $data = $import_service->getBookData($ean);
+      if(!empty($data)){
+        $import_service->reImportBook();
+        $context['results'][] = $ean . ' : ' . 'ok';
+        \Drupal::logger('wh_import_ui')->notice("Node imported EAN: ".$ean);
+      }else{
+        $context['results'][] = $ean . ' : ' . 'vlb empty';
+      }
+    }catch (\Exception $e) {
+      $context['results'][] = $ean . ' : ' . 'error: '.$e->getMessage();
+      \Drupal::logger('wh_import_batch')->error($ean . ' : ' .$e->getMessage());
     }
   }
   
