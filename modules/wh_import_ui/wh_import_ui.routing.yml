@@ -6,6 +6,7 @@ wh_import_ui.import_form:
     _title: 'Book Import'
   requirements:
     _access: 'TRUE'
+    _role: 'administrator'
   
 
 wh_import_ui.vlb_controller_importAction:
@@ -15,6 +16,7 @@ wh_import_ui.vlb_controller_importAction:
     _title: 'importAction'
   requirements:
     _permission: 'access content'
+    _role: 'administrator'
 
 wh_import_ui.vlb_controller_importBook:
   path: '/wh_import_ui/importBook/vlb/{nid}'
@@ -23,6 +25,7 @@ wh_import_ui.vlb_controller_importBook:
     _title: 'import Book'
   requirements:
     _permission: 'access content'
+    _role: 'administrator'
 
 wh_import_ui.batch_controller_importBooks:
   path: '/batchImport/vlb/auth'
