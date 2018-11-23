@@ -24,11 +24,10 @@ wh_import_ui.vlb_controller_importBook:
   requirements:
     _permission: 'access content'
 
-
 wh_import_ui.batch_controller_importBooks:
-  path: '/wh_import_ui/batchImport/vlb'
+  path: '/batchImport/vlb/auth'
   defaults:
     _controller: '\Drupal\wh_import_ui\Controller\VlbBatchController::importBooks'
     _title: 'import Books'
   requirements:
-    _permission: 'access content'
+    _role: 'administrator'
