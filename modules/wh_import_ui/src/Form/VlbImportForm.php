@@ -46,17 +46,21 @@ class VlbImportForm extends FormBase
      */
     public function importBook($ean)
     {
-        $data = $this->vlbService->getBookData($ean);
-        $bookNode = $this->vlbService->reImportBook();
-        $errorMessage = $this->vlbService->getErrorMessage();
-        if (!empty($errorMessage)) {
-            drupal_set_message($errorMessage, 'error');
-        }else{
-          $url = $bookNode->toUrl('edit-form')->toString();
-          drupal_set_message("Book re/imported successfully!\n");
-          $rendered_message = \Drupal\Core\Render\Markup::create('<a href="' . $url . '">Klick here to edit it.</a>');
-          drupal_set_message($rendered_message);
+        try{
+            $data = $this->vlbService->getBookData($ean);
+            $bookNode = $this->vlbService->reImportBook();
+
+                $url = $bookNode->toUrl('edit-form')->toString();
+                drupal_set_message("Book re/imported successfully!\n");
+                $rendered_message = \Drupal\Core\Render\Markup::create('<a href="' . $url . '">Klick here to edit it.</a>');
+                drupal_set_message($rendered_message);
+            
+        }catch(\Exception $e){
+            \Drupal::logger('wh_import_ui')->error("Import failed. '.$ean.' Exception: ".$e->getMessage());
+            drupal_set_message("Import failed. '.$ean.' Exception: ".$e->getMessage(), 'error');
+
         }
+        
     }
 
     /**
