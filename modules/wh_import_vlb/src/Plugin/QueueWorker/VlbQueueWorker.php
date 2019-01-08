@@ -25,23 +25,38 @@ class VlbQueueWorker extends QueueWorkerBase {
    */
   public function processItem($item) {
     $ean = $item->ean;
+    $log_prefix = $item->log_prefix;
+   
     try{
-        //sleep for 5 seconds
-        // if (count($context) % 1000 == 0) { 
-        //   sleep(10);
-        // }
-        sleep(1);
         $import_service = \Drupal::service('wh_import_vlb.vlb');
         $data = $import_service->getBookData($ean);
         if(!empty($data)){
             $import_service->reImportBook();
             // \Drupal::logger('wh_import_cron')->notice("Node imported EAN: ".$ean);
+            $log_message = $import_service->getLogMessage();
+            $this->logImport($item->count.' '.$ean.' '.$log_message, $log_prefix);
         }else{
-            \Drupal::logger('wh_import_cron')->error($ean . ' : ' .'vlb empty');
+            $this->logErrorImport($ean . ' : ' .'vlb empty', $log_prefix);
+            // \Drupal::logger('wh_import_cron')->error($ean . ' : ' .'vlb empty');
         }
     }catch (\Exception $e) {
-        \Drupal::logger('wh_import_cron')->error($ean . ' : ' .$e->getMessage());
+        
+        $this->logErrorImport($ean . ' : ' .$e->getMessage(), $log_prefix);
+        // \Drupal::logger('wh_import_cron')->error($ean . ' : ' .$e->getMessage());
     }
+  }
+
+  private function logErrorImport($message, $log_prefix){
+   
+    $log_path = \Drupal::service('file_system')->realpath('public://vlb_import_error'.$log_prefix.'.log');
+    error_log($message . PHP_EOL, 3, $log_path);
+     
+  }
+
+  private function logImport($message, $log_prefix){
+   
+    $log_path = \Drupal::service('file_system')->realpath('public://vlb_import_ok'.$log_prefix.'.log');
+    error_log($message . PHP_EOL, 3, $log_path);
   }
 
 }
