@@ -31,25 +31,69 @@ function wh_import_ui_help($route_name, RouteMatchInterface $route_match) {
  */
 function wh_import_ui_cron() {
 
-  \Drupal::logger('wh_import_ui_cron')->notice("wh_import_ui_cron is running now");
+  \Drupal::logger('wh_import_ui_cron')->notice("cron is running now");
   // Get queue.
   $queue = \Drupal::queue('vlb_queue');
   //get all books
   $import_service = \Drupal::service('wh_import_vlb.vlb');
   $eans = $import_service->getAllEans();
+  $manually_eans = $import_service->getManuallyImportedEans();
+  $total = count($eans) + count($manually_eans);
+  //get log-prefix
+  $config = \Drupal::config('system.site');
+  $site_name = $config->get('name');
+  $log_prefix = format_date(time(), 'custom', 'dmy_His');
+  $i = 0;
   foreach ($eans as $ean) {
+    $i++;
     // Create item to queue.
-    $data = (object) ['ean' => $ean];
+    $data = (object) ['ean' => $ean, 'count' => $i, 'total' => $total, 'log_prefix' => $log_prefix];
     $queue->createItem($data);
   }
-  // Report on number of items present
-  // $numbers = $queue->numberOfItems(); // Prints "1"
-  // \Drupal::logger('wh_import_ui_cron')->notice("numberOfItems: ".$numbers);
-  // while($item = $queue->claimItem()) {
-  // // Delete the item from queue.
-  //   \Drupal::logger('wh_import_ui_cron')->notice("item claimItem ");
+  //update also manually imported books
+  foreach ($manually_eans as $ean) {
+    $i++;
+    // Create item to queue.
+    $data = (object) ['ean' => $ean, 'count' => $i, 'total' => $total, 'log_prefix' => $log_prefix];
+    $queue->createItem($data);
+  }
+  logImport($i.' eans to import', $log_prefix);
+}
+/**
+ * Implements hook_cron().
+ */
+function wh_import_ui_mycron() {
 
-  //     $queue->deleteItem($item);
-  //     \Drupal::logger('wh_import_ui_cron')->notice("deleteItem: ");
-  // }
+  \Drupal::logger('wh_import_ui_cron')->notice("mycron is running now");
+  // Get queue.
+  $queue = \Drupal::queue('vlb_queue');
+  //get all books
+  $import_service = \Drupal::service('wh_import_vlb.vlb');
+  $eans = $import_service->getAllEans();
+  $manually_eans = $import_service->getManuallyImportedEans();
+  $total = count($eans) + count($manually_eans);
+  //get log-prefix
+  $config = \Drupal::config('system.site');
+  $site_name = $config->get('name');
+  $log_prefix = format_date(time(), 'custom', 'dmy_His').'_'.$site_name;
+  $i = 0;
+  foreach ($eans as $ean) {
+    $i++;
+    // Create item to queue.
+    $data = (object) ['ean' => $ean, 'count' => $i, 'total' => $total, 'log_prefix' => $log_prefix];
+    $queue->createItem($data);
+  }
+  //update also manually imported books
+  foreach ($manually_eans as $ean) {
+    $i++;
+    // Create item to queue.
+    $data = (object) ['ean' => $ean, 'count' => $i, 'total' => $total, 'log_prefix' => $log_prefix];
+    $queue->createItem($data);
+  }
+  logImport($i.' eans to import', $log_prefix);
+}
+
+function logImport($message, $log_prefix){
+  $log_path = \Drupal::service('file_system')->realpath('public://'.$log_prefix.'_vlb_import_ok.log');
+  error_log($message . PHP_EOL, 3, $log_path);
 }

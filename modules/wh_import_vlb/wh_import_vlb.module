@@ -22,3 +22,24 @@ function wh_import_vlb_help($route_name, RouteMatchInterface $route_match) {
     default:
   }
 }
+
+
+// function wh_import_vlb_mail($key, &$message, $params) {
+//   dpm('wh_import_vlb_mail');
+//   dpm($key);
+// }
+
+// function wh_import_vlb_mail_alter(&$message) {
+//   dpm('wh_import_vlb_mail_alter');
+//   dpm($message['id']);
+// //   if (!empty($message['id']) && $message['id'] == 'wh_import_vlb_mail') {
+// //     $message['headers']['Content-Type'] = 'text/html; charset=UTF-8; format=flowed; delsp=yes';
+// //   }
+// // //   $log_path = \Drupal::service('file_system')->realpath('public://vlb_import_ok080119_010101.log');
+// // //       $file_content = file_get_contents($log_path);
+// // // $file_content = preg_replace("/[\n\r]/","<br>",$file_content ); 
+// // // dpm($file_content );
+
+// //   $message['headers']['Content-Type'] = 'text/html; charset=UTF-8; format=flowed; delsp=yes';
+// }
+

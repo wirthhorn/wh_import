@@ -14,7 +14,12 @@ class VlbService
     protected $metadataToken;
     protected $coverToken;
     protected $data;
-    protected $timestamp_now;
+    protected $timestamp_today;
+    protected $cover_dir;
+    protected $log_message;
+    protected $retry_count;
+    protected $manually;
+    protected $new_book_categories;
 
     /**
      * Constructs a new VlbService object.
@@ -42,8 +47,36 @@ class VlbService
       $this->metadataToken  = $config->get('metadata_token');
       $this->coverToken  = $config->get('cover_token');
 
-      $now = new \DateTime("now");
-      $this->timestamp_now =  $now->getTimestamp();
+      $today = new \Drupal\Core\Datetime\DrupalDateTime('today 00:00:00', 'UTC');
+      $this->timestamp_today =  $today->getTimestamp();
+      $this->log_message = '';
+      $this->manually = false;
+      $this->new_book_categories = array();
+
+      // Create the styles directory and ensure it's writable.
+      $directory = 'book';
+
+      //let hook to change file-dir
+      \Drupal::moduleHandler()->alter('change_import_file_dir', $directory);
+       
+      $dir_ok = file_prepare_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
+      $this->cover_dir = $directory;
+    }
+
+    public function getManuallyImportedEans(){
+      $db = \Drupal::database();
+
+      $query = $db->select('node_field_data', 'n');
+      $query->join('node__field_book_ean', 'ean', 'ean.entity_id = n.nid');
+      $query->join('node__field_book_manually_imported', 'import', 'import.entity_id = n.nid');
+
+      $result = $query
+      ->fields('ean', ['field_book_ean_value'])
+      ->condition('import.field_book_manually_imported_value', 1)
+      ->execute();
+
+      $eans = $result->fetchCol();
+      return $eans;
     }
 
     public function getAllEans(){      
@@ -53,7 +86,9 @@ class VlbService
       'Fischer E-Books','ROWOHLT Polaris','Knaur eBook','Fischer FJB','ROWOHLT Repertoire','Knaur Taschenbuch','Fischer HC','ROWOHLT Taschenbuch',
       'Knaur Balance','Fischer Kinder-und Jugendbuch E-Book','ROWOHLT Wunderlich','Knaur Balance eBook','Fischer Kinder-und Jugendtaschenbuch','Ro Ro Ro',
       'Groh','Fischer KJB','Rowohlt e-Book','Pattloch Geschenkbuch','Fischer Krüger','Rowohlt Hundertaugen','Fischer Sauerländer','Fischer Scherz','Fischer Taschenbuch',
-      'Fischer TOR');
+      'Fischer TOR','Feelings');
+
+      // $verlage = array('Fischer E-Books');
 
       $search_verlage = array();
       foreach($verlage as $verlag){
@@ -63,7 +98,9 @@ class VlbService
       
       $onix_codes = array();
       //get VLB Codes
-      $query = \Drupal::entityQuery('taxonomy_term')->condition('vid', 'v_book_category');
+      $query = \Drupal::entityQuery('taxonomy_term')
+      ->condition('field_v_bc_mass_import',1)
+      ->condition('vid', 'v_book_category');
       $v_book_category_tids = $query->execute();
       $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
       foreach($v_book_category_terms as $term){
@@ -84,39 +121,55 @@ class VlbService
         }
       }
       $onix_codes_str = implode(" oder ",$onix_codes);
-      $search_str = '(('.$search_verlage_str.') und ('.$onix_codes_str.')) und db=vlb';
+
+      //dates
+      $today = new \Drupal\Core\Datetime\DrupalDateTime('today 00:00:00', 'UTC');
+      $today_str = $today->format('d.m.Y');
+
+      $last_days = new \Drupal\Core\Datetime\DrupalDateTime('-1 day 00:00:00', 'UTC');
+      $last_days_str = $last_days->format('d.m.Y');
+
+      $last_modified = 'AD='.$last_days_str.'^'.$today_str.' oder ZD='.$last_days_str.'^'.$today_str;
+      $search_str = '('.$search_verlage_str.') und ('.$onix_codes_str.') und ('.$last_modified.') und db=vlb';
+      // \Drupal::logger('wh_import_vlb')->notice($search_str);
       $search_str = urlencode($search_str);
+      // \Drupal::logger('wh_import_vlb')->notice($search_str);
 
       $responseData = array();
       $data = array();
       
-          $client = \Drupal::httpClient();
-          $vlbMetadatenToken = $this->metadataToken;
-          $url = 'https://vlb.de/app/#search/advancedsearch/' . $search_str;
-          $url = 'https://vlb.de/v1/' . $search_str;
-          
-          $url = 'https://api.vlb.de/api/v1/product/9783426306055/isbn13';
-          $url = 'https://api.vlb.de/api/v1/login';
-          $method = 'GET';
+      $client = \Drupal::httpClient();
+      $vlbMetadatenToken = $this->metadataToken;
+      $url = 'https://vlb.de/app/#search/advancedsearch/' . $search_str;
+      $url = 'https://vlb.de/v1/' . $search_str;
+      
+      $url = 'https://api.vlb.de/api/v1/product/9783426306055/isbn13';
+      $url = 'https://api.vlb.de/api/v1/login';
+      $method = 'GET';
             
-        $options = [
+      $options = [
           'headers' => [
               'Authorization' => 'Bearer '.$vlbMetadatenToken,
           ],
       ];
 
-      $url = 'http://api.vlb.de/api/v1/products/?size=250&search='.$search_str;
+      $url = 'https://api.vlb.de/api/v1/products/?size=250&search='.$search_str;
 
       $ean = array();
       $total_pages = 1;
       try {
+        // \Drupal::logger('wh_import_vlb')->notice('<pre><code>' . print_r($url, TRUE) . '</code></pre>');
           $response = $client->request($method, $url, $options);
           $code = $response->getStatusCode();
           if ($code == 200) {
                 $responseData = $response->getBody()->getContents();
                 $var = json_decode($responseData, true);
+                // \Drupal::logger('wh_import_vlb')->notice('<pre><code>' . print_r($var, TRUE) . '</code></pre>');
                 $total_pages = $var['totalPages'];
+                // \Drupal::logger('wh_import_vlb')->notice($total_pages);
                 $contents = $var['content'];
+                
+                // \Drupal::logger('wh_import_vlb')->notice('<pre><code>' . print_r($contents, TRUE) . '</code></pre>');
                 $this->getEans($ean, $contents);
           }else{
             throw new \Exception("Import failed! VLB code: ".$code);
@@ -128,7 +181,7 @@ class VlbService
       //next pages
       //$total_pages = 1;
       for($page_number = 2; $page_number <= $total_pages; $page_number++ ){
-        $url = 'http://api.vlb.de/api/v1/products/?page='.$page_number.'&size=250&search='.$search_str;
+        $url = 'https://api.vlb.de/api/v1/products/?page='.$page_number.'&size=250&search='.$search_str;
         try {
           $response = $client->request($method, $url, $options);
           $code = $response->getStatusCode();
@@ -145,8 +198,9 @@ class VlbService
             throw new \Exception("Import failed! Wrong vlb request. \Exception: ".' - '.$e->getMessage());
         }
       }
-
-      \Drupal::logger('wh_import_vlb')->notice("Search ok.");
+      // $ean_str = implode(" ",$ean);
+      // \Drupal::logger('wh_import_vlb')->notice(count($ean).' '.$ean_str);
+      // $ean = array();
       return $ean;
     }
 
@@ -162,10 +216,13 @@ class VlbService
         $responseData = array();
         $data = array();
         $this->ean = $ean;
+        $this->log_message = '';
+        $this->retry_count = 0;
+        $this->new_book_categories = array();
         if (!empty($ean)) {
             $client = \Drupal::httpClient();
             $vlbMetadatenToken = $this->metadataToken;
-            $url = 'https://api.vlb.de/api/v1/product/' . $ean . '/isbn13';
+            $url = 'https://api.vlb.de/api/v1/product/' . $ean . '/ean';
             $method = 'GET';
             $options = [
                 'headers' => [
@@ -188,7 +245,7 @@ class VlbService
                     $data['biographies'] = $this->getBiographies($var['texts']);
                     $data['persons'] = $this->getPersons($var['contributors']);
                     $data['price'] = $this->getPrice($var['prices']);
-                    $data['cover'] = $this->getCover('l');
+                    $data['cover'] = $this->getCover($var['mediaFiles']);
                     $data['press'] = $this->getPress($var['texts']);
                     $data['pages'] = $this->getPages($var['extent']);
                     $data['binding'] = $this->getBinding($var['form']);
@@ -205,7 +262,6 @@ class VlbService
             }
         }
         $this->data = $data;
-        \Drupal::logger('wh_import_vlb')->notice("Import ok. EAN: ".$ean);
         return $data;
     }
 
@@ -298,7 +354,7 @@ class VlbService
     //wandelt deutsches datum t.m.y in timestamp um
     private function timestampFromString($de_date_string){
       $timestamp = null;
-      $date = \DateTime::createFromFormat('d.m.Y', $de_date_string);
+      $date = new \Drupal\Core\Datetime\DrupalDateTime($de_date_string.' 00:00:00', 'UTC');
       if($date){
         $timestamp = $date->getTimestamp();
       }elseif($de_date_string != null){
@@ -334,15 +390,15 @@ class VlbService
       $price_now_array = array();
       //get price from now
       foreach($german_prices as $key => $german_price){
-        if((isset($german_price['until_date'])) && (isset($german_price['from_date'])) && ($this->timestamp_now < $german_price['until_date']) && ($this->timestamp_now > $german_price['from_date'])){
+        if((isset($german_price['until_date'])) && (isset($german_price['from_date'])) && ($this->timestamp_today <= $german_price['until_date']) && ($this->timestamp_today >= $german_price['from_date'])){
           //from_date is in the past and until_date is in the future
           $price_now_array[] = $german_price['value'];
           // dpm('$german_prices - between: '.$key. ' - '.$german_price['value']);
-        }elseif(isset($german_price['until_date']) && ($this->timestamp_now < $german_price['until_date']) && (!isset($german_price['from_date']))){
+        }elseif(isset($german_price['until_date']) && ($this->timestamp_today <= $german_price['until_date']) && (!isset($german_price['from_date']))){
           //until_date is in the future and no from_date
           $price_now_array[] = $german_price['value'];
           // dpm('$german_prices - until_date: '.$key. ' - '.$german_price['value']);
-        }elseif(isset($german_price['from_date']) && ($this->timestamp_now > $german_price['from_date']) && (!isset($german_price['until_date']))){
+        }elseif(isset($german_price['from_date']) && ($this->timestamp_today >= $german_price['from_date']) && (!isset($german_price['until_date']))){
           //from_date is in the past  and no until_date
           $price_now_array[] = $german_price['value'];
           // dpm('$german_prices - from_date: '.$key. ' - '.$german_price['value']);
@@ -352,10 +408,12 @@ class VlbService
         }
       }
       //get lowest price
-      $price_now = min($price_now_array);
-      if(!$price_now){
+      if(empty($price_now_array)){
         $price_now = 0;
+      }else{
+        $price_now = min($price_now_array);
       }
+
       // dpm('$price_now: '.$price_now);
       // dpm('.........................................');
       return $price_now;
@@ -382,7 +440,7 @@ class VlbService
         //price in past?
         // dpm('isPriceInPast?: '.$record->price);
         $typo3_price = $record->price;
-        if((!empty($record->valid_to)) && ($this->timestamp_now > $record->valid_to)){
+        if((!empty($record->valid_to)) && ($this->timestamp_today > $record->valid_to)){
           //set typo3-price
           $price_old_typo3 = $record->price;
           // dpm($price_old_typo3);
@@ -423,13 +481,22 @@ class VlbService
     }
 
     private function isSpecificBook($ean){
-      $books = \Drupal::entityTypeManager()
-        ->getStorage('node')
-        ->loadByProperties(['field_book_ean' => $ean, 'field_book_price' => 0]);
-        if(count($books) >= 1){
-         return true;
-        }
-        return false;
+      
+      $query = \Drupal::entityQuery('node');
+      $query->notExists('field_book_cover');
+      $query->condition('field_book_ean',$ean,'=');
+      $query->condition('type', 'book');
+
+      $books=$query->execute();
+
+      // $books = \Drupal::entityTypeManager()
+      //   ->getStorage('node')
+      //   ->loadByProperties(['field_book_ean' => $ean, 'field_book_price' => 0]);
+
+      if(count($books) >= 1){
+        return true;
+      }
+      return false;
     }
 
 
@@ -452,45 +519,66 @@ class VlbService
       return array_unique($category_codes);
     }
 
-    private function getCover($size){
-      $file = array();
+    private function getCover($mediaFiles){
+      $cover = array();
+      $cover_size_drupal = NULL;
 
-      // Create the styles directory and ensure it's writable.
-      $directory = 'book';
-      
-      //let hook to change file-dir
-      \Drupal::moduleHandler()->alter('change_import_file_dir', $directory);
+      //get cover id from vlb
+      $media_keys = $this->findInArray($mediaFiles, 'type', '04');
+      if(count($media_keys) > 1){
+        throw new \Exception("Book-Import failed! To much mediaFiles-Data with type 04 exists in VLB for book with EAN ".$this->ean);
+      }elseif(empty($media_keys)){
+        throw new \Exception("Book-Import failed! No mediaFiles-Data exists in VLB for book with EAN ".$this->ean);
+      }
 
-      $dir_ok = file_prepare_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
+      //get existing cover-size from drupal, if exist
+      $query = \Drupal::entityQuery('node');
+      $query->condition('field_book_ean',$this->ean,'=');
+      $query->condition('type', 'book');
+      $query->exists('field_book_cover');
+      $book_ids=$query->execute();
+      //if cover exist
+      if(!empty($book_ids)){
+        //get cover-size from drupal
+        $book_id = reset($book_ids);
+        $book = \Drupal\node\Entity\Node::load($book_id);
+        $file = $book->field_book_cover->entity;
+        $cover_size_drupal = intval($file->filesize->value);
+      }
 
-      $vlbCoverToken = $this->coverToken;
-      $remote_file_path = 'https://api.vlb.de/api/v1/cover/'.$this->ean.'/'.$size;
+      $vlb_request = 'https://api.vlb.de/api/v1/cover/'.$this->ean.'/l';
 
       $options = [
           'headers' => [
-              'Authorization' => 'Bearer '.$vlbCoverToken,
+              'Authorization' => 'Bearer '.$this->coverToken,
           ],
       ];
 
       // Destination file to download
-      $destination = $directory.'/cover_'.$this->ean.'.jpg';
+      $destination = $this->cover_dir.'/cover_'.$this->ean.'.jpg';
       $client = \Drupal::httpClient();
-      try {
-        $response = $client->request('GET', $remote_file_path, $options);
-        $code = $response->getStatusCode();
 
+      //get cover-size from vlb
+      try {
+        $response = $client->request('GET', $vlb_request, $options);
+
+        $code = $response->getStatusCode();
         if ($code == 200) {
           $data = (string) $response->getBody();
-          $managed = true;
-          $local = $managed ? file_save_data($data, $destination, FILE_EXISTS_REPLACE) : file_unmanaged_save_data($data, $path, $replace);
-          $file['fid'] = $local->id();
+          $cover_size_vlb = strlen($data);
+          //check book cover-size changed -> import
+          if($cover_size_vlb != $cover_size_drupal){
+            $local = file_save_data($data, $destination, FILE_EXISTS_REPLACE);
+            $cover['fid'] = $local->id();
+            $this->setLogMessage("Cover re/import!");
+          }       
         }else{
           throw new \Exception("Cover-Import failed! Book with EAN ".$this->ean." error-code: ".$code);
         }
-      } catch (RequestException $e) {
+      } catch(\Exception $e) {
           throw new \Exception("Cover-Import failed! Book with EAN ".$this->ean." Exception: ".$e->getMessage());
       }
-      return $file;
+      return $cover;
     }
 
     private function findInArray($multi_array, $field, $value)
@@ -524,7 +612,6 @@ class VlbService
         }
         $book = reset($books);
         $this->setBookValues($book);
-        $book->save();
         return $book;
     }
 
@@ -568,6 +655,9 @@ class VlbService
 
         $node->set('uid', \Drupal::currentUser()->id());
         $node->status = 1;
+
+        $node->set('field_book_manually_imported', $this->manually);
+        
         
         //set other fields
         if(isset($this->data['binding'])){
@@ -586,7 +676,7 @@ class VlbService
           $node->set('field_book_press', $this->data['press']);
         }
 
-        if(!empty($this->data['price'])){
+        if(isset($this->data['price'])){
           $this->setPrices($node);
         }
         if(isset($this->data['availability'])){
@@ -613,7 +703,6 @@ class VlbService
       }catch(\Exception $e){
         throw new \Exception("Import failed! Cannot set book-values! Book with EAN ".$this->ean.' - '.$e->getMessage());
       }
-      \Drupal::logger('wh_import_vlb')->debug("Re/Import success! Book with EAN ".$this->ean." re/imported");
     }
 
     private function getBiorgraphy($person){
@@ -632,6 +721,7 @@ class VlbService
 
     private function setPrices(&$node){
       $price_old = floatval($node->field_book_old_price->value);
+      $price_old_log = $price_old;
 
       //ceep care of old prices from typo3
       $price_old_typo3 = $this->getOldPriceFromTypo3();
@@ -646,15 +736,16 @@ class VlbService
       }
 
       $price_until_now = floatval($node->field_book_price->value);
+      $price_until_now_log = $price_until_now;
 
-      if((!is_null($price_old_typo3)) && (isset($price_until_now)) && ($price_until_now > $price_old_typo3) ){
+      if((!is_null($price_old_typo3)) && (isset($price_until_now)) && ($price_until_now < $price_old_typo3) ){
         //correct price
         $price_until_now = $price_old_typo3;
         // dpm('korrect price: $price_until_now = '.$price_until_now.'-------------------------------------------------------------------------------------------------------');
       }
 
       if((!is_null($price_old_typo3)) && ($price_old_typo3 > floatval($this->data["price"]))){
-        \Drupal::logger('wh_import_batch')->notice("Import old value from typo3 ".$price_old_typo3.' / '.$this->data["price"].' - EAN: '.$this->ean);
+        //\Drupal::logger('wh_import_batch')->notice("Import old value from typo3 ".$price_old_typo3.' / '.$this->data["price"].' - EAN: '.$this->ean);
       }
 
       if(isset($this->data['price'])){
@@ -674,6 +765,8 @@ class VlbService
       if(!empty($price_old)){
         // dpm('--------------------!empty($price_old)-------------------------------------------------------------------------------------------------------------------------');
       }
+      $this->setLogMessage('Preis: '.$node->field_book_price->value.' - Streichpreis: '.$node->field_book_old_price->value.' (davor: Preis: '.$price_until_now_log.' - Streichpreis: '.$price_old_log.')');
+      //\Drupal::logger('wh_import_vlb')->notice($this->log_message);
       // dpm('$price_old: '.$price_old);
       // dpm('$price_until_now: '.$price_until_now);
       // dpm('field_book_old_price: '.$node->field_book_old_price->value);
@@ -698,7 +791,7 @@ class VlbService
           $query = \Drupal::entityQuery('taxonomy_term')->condition('field_v_ba_code', 'IP','<>');
           $v_ba_tids = $query->execute();
           $v_ba_tid = reset($v_ba_tids);
-          $availability_term = \Drupal\taxonomy\Entity\Term::load($v_ba_tid);
+          
           //add code
           $availability_term->field_v_ba_code[] = $code;
           $availability_term->save();
@@ -864,20 +957,48 @@ class VlbService
       return $personNodes;
     }
 
-    public function reImportBook(){
+    public function reImportBook($manually = false){
       $node = null;
-      if(empty($this->data)){
-        return null;
-      }
-      // if(!$this->isSpecificBook($this->ean)){
-      //   return null;
-      // }
-      if($this->bookExists($this->ean)){
-        $node = $this->updateBookNode();
-      }else{
-        $node = $this->createBookNode();
+      try{
+        if(empty($this->data)){
+          return null;
+        }
+        $this->manually = $manually;
+        // if(!$this->isSpecificBook($this->ean)){
+        //   return null;
+        // }
+        if($this->bookExists($this->ean)){
+          $node = $this->updateBookNode();
+        }else{
+          $node = $this->createBookNode();
+        }
+        $node->save();
+      }catch(\PDOException $e){
+        if($this->retry_count == 0){
+          $this->retry_count++;
+          $this->reImportBook();
+        }else{
+          throw new \Exception("Import failed! Cannot re/ImportBook book! DB-Error. Book with EAN ".$this->ean.' - '.$e->getMessage());
+        }
+      }catch(\Exception $e){
+        $search_str = 'SQLSTATE[40001]: Serialization failure';
+        if((substr($e->getMessage(), 0, strlen($search_str)) === $search_str) && ($this->retry_count == 0)){
+          $this->retry_count++;
+          $this->setLogMessage('Info: class of SQLSTATE[40001]: Serialization failure: '.get_class($e));
+          $this->reImportBook();
+        }else{
+          throw new \Exception("Import failed! Cannot re/ImportBook book! Book with EAN ".$this->ean.' - '.$e->getMessage());
+        }
       }
       return $node;
+    }
+
+    public function getLogMessage(){
+      return $this->log_message;
+    }
+
+    private function setLogMessage($message){
+      $this->log_message .= ' '.$message;
     }
 
     private function createBookNode()
@@ -901,16 +1022,13 @@ class VlbService
         }
 
         $this->setBookValues($node);
-        if(!empty($this->data['category_codes'])){
+        if(!empty($this->data['category_codes']) && (!$this->manually)){
           if(count($node->field_book_category->getValue()) == 0){
             \Drupal::logger('wh_import_vlb')->error("Import failed! False categories! Book with EAN ".$this->ean);
             throw new \Exception("Import failed! False categories! Book with EAN ".$this->ean);
           }
         }
         $node->enforceIsNew();
-        $node->save();
-
-
         return $node;
     }
 
@@ -924,9 +1042,15 @@ class VlbService
       }
     }
 
+    public function getNewCategoryTerms(){
+      return $this->new_book_categories;
+    }
+    
     public function setCategories(&$node){
       if(!empty($this->data['category_codes'])){
         $tids = array();
+        $onix_codes = array();
+        //get Mapped Taxonomy Terms for mass-import
         $query = \Drupal::entityQuery('taxonomy_term')->condition('vid', 'v_book_category');
         $v_book_category_tids = $query->execute();
         $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
@@ -969,7 +1093,36 @@ class VlbService
             }//get +placeholder-terms / end
           }
         }
+
+        //get new ONIX-categories, if no other exist
+        //get existing ONIX-categories
+        $query = \Drupal::entityQuery('taxonomy_term')
+          ->condition('field_v_bc_onix_code', $this->data['category_codes'], 'IN')
+          ->condition('vid', 'v_book_category');
+        $existing_categories = $query->execute();
+
+        //create only new Terms, if no category exist for this book
+        if(empty($existing_categories)){
+          //create Taxonomy-Term foreach new ONIX-category
+          foreach($this->data['category_codes'] as $new_categorie){
+            try{
+              $term = \Drupal\taxonomy\Entity\Term::create(array(
+                'parent' => array(),
+                'name' => 'TBD '.$new_categorie,
+                'field_v_bc_onix_code' => $new_categorie,
+                'vid' => 'v_book_category',
+              ));
+              $term->save();
+              $tids[] = $term->id();
+            }catch(\Exception $e){
+              throw new \Exception("Import failed! Cannot creat new ONIX-category-Term for the book.".' - '.$e->getMessage());
+            }
+          }
+          $this->new_book_categories = $tids;
+        }
+
         $tids = array_unique($tids);
+                
         $node->set('field_book_category', $tids);
         $node->set('field_book_category_onix_code', $this->data['category_codes']);
       }

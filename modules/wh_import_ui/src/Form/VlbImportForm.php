@@ -48,13 +48,29 @@ class VlbImportForm extends FormBase
     {
         try{
             $data = $this->vlbService->getBookData($ean);
-            $bookNode = $this->vlbService->reImportBook();
+            $manually = true;
+            $bookNode = $this->vlbService->reImportBook($manually);
 
-                $url = $bookNode->toUrl('edit-form')->toString();
-                drupal_set_message("Book re/imported successfully!\n");
-                $rendered_message = \Drupal\Core\Render\Markup::create('<a href="' . $url . '">Klick here to edit it.</a>');
-                drupal_set_message($rendered_message);
-            
+            $url = $bookNode->toUrl('edit-form')->toString();
+            drupal_set_message("Book re/imported successfully!\n");
+            $rendered_message = \Drupal\Core\Render\Markup::create('<a href="' . $url . '">Klick here to edit it.</a>');
+            drupal_set_message($rendered_message);
+
+            //check, if book has new categories
+            $new_tids = $this->vlbService->getNewCategoryTerms();
+            if(!empty($new_tids)){
+                if(count($new_tids)>1){
+                    drupal_set_message("New book categories needs to be defined!\n", 'warning');
+                }else{
+                    drupal_set_message("New book category needs to be defined!\n", 'warning');
+                }
+            }
+            foreach($new_tids as $new_tid){
+                $term = \Drupal\taxonomy\Entity\Term::load($new_tid);
+                $url = '/taxonomy/term/'.$new_tid.'/edit?destination=/book/import';
+                $rendered_message = \Drupal\Core\Render\Markup::create('<a target="blank" href="' . $url . '">Klick here to define or delete category '.$term->field_v_bc_onix_code->value.'.</a>');
+                drupal_set_message($rendered_message,'warning');
+            }
         }catch(\Exception $e){
             \Drupal::logger('wh_import_ui')->error("Import failed. '.$ean.' Exception: ".$e->getMessage());
             drupal_set_message("Import failed. '.$ean.' Exception: ".$e->getMessage(), 'error');
