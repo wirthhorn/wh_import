@@ -80,48 +80,52 @@ class VlbService
     }
 
     public function getAllEans(){      
-      $verlage = array('Droemer Knaur','S. Fischer','Argon','Droemer','S.Fischer','Rowohlt','Kiepenheuer & Witsch','Droemer eBook',
-      'Fischer digiBook','Rowohlt Berlin','E-Books im Verlag Kiepenheuer & Witsch','Argon Sauerländer Audio ein Imprint von Argon', 'Droemer Taschenbuch',
-      'Fischer Digital','ROWOHLT Kindler','Argon Balance ein Imprint v. Argon Verlag', 'Knaur',
-      'Fischer E-Books','ROWOHLT Polaris','Knaur eBook','Fischer FJB','ROWOHLT Repertoire','Knaur Taschenbuch','Fischer HC','ROWOHLT Taschenbuch',
-      'Knaur Balance','Fischer Kinder-und Jugendbuch E-Book','ROWOHLT Wunderlich','Knaur Balance eBook','Fischer Kinder-und Jugendtaschenbuch','Ro Ro Ro',
-      'Groh','Fischer KJB','Rowohlt e-Book','Pattloch Geschenkbuch','Fischer Krüger','Rowohlt Hundertaugen','Fischer Sauerländer','Fischer Scherz','Fischer Taschenbuch',
-      'Fischer TOR','Feelings');
+      // $verlage = array('Droemer Knaur','S. Fischer','Argon','Droemer','S.Fischer','Rowohlt','Kiepenheuer & Witsch','Droemer eBook',
+      // 'Fischer digiBook','Rowohlt Berlin','E-Books im Verlag Kiepenheuer & Witsch','Argon Sauerländer Audio ein Imprint von Argon', 'Droemer Taschenbuch',
+      // 'Fischer Digital','ROWOHLT Kindler','Argon Balance ein Imprint v. Argon Verlag', 'Knaur',
+      // 'Fischer E-Books','ROWOHLT Polaris','Knaur eBook','Fischer FJB','ROWOHLT Repertoire','Knaur Taschenbuch','Fischer HC','ROWOHLT Taschenbuch',
+      // 'Knaur Balance','Fischer Kinder-und Jugendbuch E-Book','ROWOHLT Wunderlich','Knaur Balance eBook','Fischer Kinder-und Jugendtaschenbuch','Ro Ro Ro',
+      // 'Groh','Fischer KJB','Rowohlt e-Book','Pattloch Geschenkbuch','Fischer Krüger','Rowohlt Hundertaugen','Fischer Sauerländer','Fischer Scherz','Fischer Taschenbuch',
+      // 'Fischer TOR','Feelings');
 
-      // $verlage = array('Fischer E-Books');
+      // // $verlage = array('Fischer E-Books');
 
-      $search_verlage = array();
-      foreach($verlage as $verlag){
-        $search_verlage[] = 'vl='.$verlag;
-      }
-      $search_verlage_str = implode(" oder ",$search_verlage);
+      // $search_verlage = array();
+      // foreach($verlage as $verlag){
+      //   $search_verlage[] = 'vl='.$verlag;
+      // }
+      // $search_verlage_str = implode(" oder ",$search_verlage);
+
+      $config = \Drupal::config('wh_import_vlb.config');
+      $search_verlage_str = $config->get('book_publisher');
+      $onix_codes_str = $config->get('book_categories');
       
-      $onix_codes = array();
-      //get VLB Codes
-      $query = \Drupal::entityQuery('taxonomy_term')
-      ->condition('field_v_bc_mass_import',1)
-      ->condition('vid', 'v_book_category');
-      $v_book_category_tids = $query->execute();
-      $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
-      foreach($v_book_category_terms as $term){
-        $v_bc_onix_codes = $term->get("field_v_bc_onix_code")->getValue();
-        foreach($v_bc_onix_codes as $v_bc_onix_code){
-          $v_bc_onix_code = $v_bc_onix_code['value'];
-          if(strpos($v_bc_onix_code, '+') != false){
-            $v_bc_onix_codes = explode('+', $v_bc_onix_code);
-            $categories_th = array();
-            foreach($v_bc_onix_codes as $v_bc_onix_code){
-              $categories_th[] = 'th='.$v_bc_onix_code;
-            }
-            $categories_th_str = implode(" und ",$categories_th);
-            $onix_codes[] = '('.$categories_th_str.')';
-          }else{
-            $onix_codes[] = 'th='.$v_bc_onix_code;
-          }
-        }
-      }
-      $onix_codes_str = implode(" oder ",$onix_codes);
-
+      // $onix_codes = array();
+      // //get VLB Codes
+      // $query = \Drupal::entityQuery('taxonomy_term')
+      // ->condition('field_v_bc_mass_import',1)
+      // ->condition('vid', 'v_book_category');
+      // $v_book_category_tids = $query->execute();
+      // $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
+      // foreach($v_book_category_terms as $term){
+      //   $v_bc_onix_codes = $term->get("field_v_bc_onix_code")->getValue();
+      //   foreach($v_bc_onix_codes as $v_bc_onix_code){
+      //     $v_bc_onix_code = $v_bc_onix_code['value'];
+      //     if(strpos($v_bc_onix_code, '+') != false){
+      //       $v_bc_onix_codes = explode('+', $v_bc_onix_code);
+      //       $categories_th = array();
+      //       foreach($v_bc_onix_codes as $v_bc_onix_code){
+      //         $categories_th[] = 'th='.$v_bc_onix_code;
+      //       }
+      //       $categories_th_str = implode(" und ",$categories_th);
+      //       $onix_codes[] = '('.$categories_th_str.')';
+      //     }else{
+      //       $onix_codes[] = 'th='.$v_bc_onix_code;
+      //     }
+      //   }
+      // }
+      // $onix_codes_str = implode(" oder ",$onix_codes);
+ 
       //dates
       $today = new \Drupal\Core\Datetime\DrupalDateTime('today 00:00:00', 'UTC');
       $today_str = $today->format('d.m.Y');
@@ -131,7 +135,7 @@ class VlbService
 
       $last_modified = 'AD='.$last_days_str.'^'.$today_str.' oder ZD='.$last_days_str.'^'.$today_str;
       $search_str = '('.$search_verlage_str.') und ('.$onix_codes_str.') und ('.$last_modified.') und db=vlb';
-      // \Drupal::logger('wh_import_vlb')->notice($search_str);
+       \Drupal::logger('wh_import_vlb')->notice($search_str);
       $search_str = urlencode($search_str);
       // \Drupal::logger('wh_import_vlb')->notice($search_str);
 
@@ -199,7 +203,7 @@ class VlbService
         }
       }
       // $ean_str = implode(" ",$ean);
-      // \Drupal::logger('wh_import_vlb')->notice(count($ean).' '.$ean_str);
+       \Drupal::logger('wh_import_vlb')->notice(count($ean));
       // $ean = array();
       return $ean;
     }
@@ -318,11 +322,13 @@ class VlbService
       $person_keys = $this->findInArray($contributors, 'type', 'A01');
       //get all persons
       foreach($contributors as $contributor){
-        $person['firstName'] = $contributor['firstName'];
-        $person['lastName'] = $contributor['lastName'];
-        $person['type'] = $contributor['type'];
-        $person['biographicalNote'] = $contributor['biographicalNote'];
-        $persons[] = $person;
+        if(!empty($contributor['lastName'])){
+          $person['firstName'] = $contributor['firstName'];
+          $person['lastName'] = $contributor['lastName'];
+          $person['type'] = $contributor['type'];
+          $person['biographicalNote'] = $contributor['biographicalNote'];
+          $persons[] = $person;
+        }
       }
       return $persons;
     }
@@ -336,19 +342,6 @@ class VlbService
         $biographies[] = $biography;
       }
       return $biographies;
-    }
-
-    private function getAuthors($contributors){
-      $authors = array();
-      $author_keys = $this->findInArray($contributors, 'type', 'A01');
-      foreach($author_keys as $key => $value){
-        $contributor = $contributors[$value];
-        $author['firstName'] = $contributor['firstName'];
-        $author['lastName'] = $contributor['lastName'];
-        $author['vlb_id'] = $contributor['id'];
-        $authors[] = $author;
-      }
-      return $authors;
     }
 
     //wandelt deutsches datum t.m.y in timestamp um
@@ -525,6 +518,15 @@ class VlbService
 
       //get cover id from vlb
       $media_keys = $this->findInArray($mediaFiles, 'type', '04');
+      if(empty($media_keys)){
+        $media_keys = $this->findInArray($mediaFiles, 'type', '06');
+      }
+      if(empty($media_keys)){
+        $media_keys = $this->findInArray($mediaFiles, 'type', '03');
+      }
+      if(empty($media_keys)){
+        $media_keys = $this->findInArray($mediaFiles, 'type', '05');
+      }
       if(count($media_keys) > 1){
         throw new \Exception("Book-Import failed! To much mediaFiles-Data with type 04 exists in VLB for book with EAN ".$this->ean);
       }elseif(empty($media_keys)){
@@ -1045,54 +1047,60 @@ class VlbService
     public function getNewCategoryTerms(){
       return $this->new_book_categories;
     }
+
+    public function getMappingCategories(){
+      if(empty($this->data['category_codes'])){
+        return null;
+      }
+      $tids = array();
+      $onix_codes = array();
+      //get Mapped Taxonomy Terms for mass-import
+      $query = \Drupal::entityQuery('taxonomy_term')->condition('vid', 'v_book_category');
+      $v_book_category_tids = $query->execute();
+      $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
+      foreach($v_book_category_terms as $term){
+        $v_bc_onix_codes = $term->get("field_v_bc_onix_code")->getValue();
+        foreach($v_bc_onix_codes as $v_bc_onix_code){
+          //get field-value
+          $v_bc_onix_code = $v_bc_onix_code['value'];
+          //get +placeholder-terms / start
+          //check, if category contains +placeholer und plit at +
+          //get all placeholder categories saved in drupal like FH*
+          $category_placeholder = '*';//category-placeholder
+          $and_category_placeholder = '+';//and-placeholder
+          $v_bc_onix_codes = explode(',', $v_bc_onix_code);
+          for($i=0; $i < count($v_bc_onix_codes); $i++){
+            //get *placeholder-terms / start
+            //check, if category contains *placeholer und get *placeholer-position
+            //get all placeholder categories saved in drupal like FH*
+            $placeholer_pos = strpos($v_bc_onix_codes[$i], $category_placeholder);
+            if($placeholer_pos !== false){
+              $short_v_bc_onix_code = substr($v_bc_onix_codes[$i],0,$placeholer_pos);
+              //search short_onix_code in vlb-array
+              foreach($this->data['category_codes'] as $vlb_category_code){
+                $short_vlb_category_code = substr($vlb_category_code,0,$placeholer_pos);
+                if($short_vlb_category_code === $short_v_bc_onix_code){
+                  $tids[] = $term->id();
+                }
+              }
+            }//get *placeholder-terms / end
+            else{//get matching-terms / start
+              //search onix_code in vlb-array
+              foreach($this->data['category_codes'] as $vlb_category_code){
+                if($vlb_category_code === $v_bc_onix_codes[$i]){
+                  $tids[] = $term->id();
+                }
+              }
+            }//get matching-terms / end
+          }//get +placeholder-terms / end
+        }
+      }
+      return $tids;
+    }
     
     public function setCategories(&$node){
       if(!empty($this->data['category_codes'])){
-        $tids = array();
-        $onix_codes = array();
-        //get Mapped Taxonomy Terms for mass-import
-        $query = \Drupal::entityQuery('taxonomy_term')->condition('vid', 'v_book_category');
-        $v_book_category_tids = $query->execute();
-        $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
-        foreach($v_book_category_terms as $term){
-          $v_bc_onix_codes = $term->get("field_v_bc_onix_code")->getValue();
-          foreach($v_bc_onix_codes as $v_bc_onix_code){
-            //get field-value
-            $v_bc_onix_code = $v_bc_onix_code['value'];
-            //get +placeholder-terms / start
-            //check, if category contains +placeholer und plit at +
-            //get all placeholder categories saved in drupal like FH*
-            $category_placeholder = '*';//category-placeholder
-            $and_category_placeholder = '+';//and-placeholder
-            $v_bc_onix_codes = explode(',', $v_bc_onix_code);
-            $var_found_onix_codes = array();
-            for($i=0; $i < count($v_bc_onix_codes); $i++){
-              //get *placeholder-terms / start
-              //check, if category contains *placeholer und get *placeholer-position
-              //get all placeholder categories saved in drupal like FH*
-              $placeholer_pos = strpos($v_bc_onix_codes[$i], $category_placeholder);
-              if($placeholer_pos !== false){
-                $short_v_bc_onix_code = substr($v_bc_onix_codes[$i],0,$placeholer_pos);
-                //search short_onix_code in vlb-array
-                foreach($this->data['category_codes'] as $vlb_category_code){
-                  $short_vlb_category_code = substr($vlb_category_code,0,$placeholer_pos);
-                  if($short_vlb_category_code === $short_v_bc_onix_code){
-                    $tids[] = $term->id();
-                    $var_found_onix_codes[$i] = true;
-                  }
-                }
-              }//get *placeholder-terms / end
-              else{//get matching-terms / start
-                //search onix_code in vlb-array
-                foreach($this->data['category_codes'] as $vlb_category_code){
-                  if($vlb_category_code === $v_bc_onix_codes[$i]){
-                    $tids[] = $term->id();
-                  }
-                }
-              }//get matching-terms / end
-            }//get +placeholder-terms / end
-          }
-        }
+        $tids = $this->getMappingCategories();
 
         //get new ONIX-categories, if no other exist
         //get existing ONIX-categories

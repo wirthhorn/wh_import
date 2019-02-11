@@ -7,6 +7,15 @@ wh_import_ui.import_form:
   requirements:
     _access: 'TRUE'
     _role: 'administrator'
+
+wh_import_ui.mapping_form:
+  path: '/book/onix-mapping'
+  defaults:
+    _form: '\Drupal\wh_import_ui\Form\OnixMappingForm'
+    _title: 'Onix Mapping'
+  requirements:
+    _access: 'TRUE'
+    _role: 'administrator'
   
 
 wh_import_ui.vlb_controller_importAction:

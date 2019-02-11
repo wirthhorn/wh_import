@@ -5,6 +5,7 @@ namespace Drupal\wh_import_ui\Form;
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\wh_import_vlb\VlbService;
+use Drupal\user\PrivateTempStoreFactory;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -19,6 +20,7 @@ class VlbImportForm extends FormBase
      * @var \Drupal\wh_import_vlb\VlbService
      */
     protected $vlbService;
+
 
     /**
      * Constructs a new VlbController object.
@@ -47,7 +49,7 @@ class VlbImportForm extends FormBase
     public function importBook($ean)
     {
         try{
-            $data = $this->vlbService->getBookData($ean);
+            
             $manually = true;
             $bookNode = $this->vlbService->reImportBook($manually);
 
@@ -124,8 +126,22 @@ class VlbImportForm extends FormBase
      */
     public function submitForm(array &$form, FormStateInterface $form_state)
     {
-       $ean = str_replace ('-','',$form_state->getValue('ean'));
-       $ean = trim($ean);
-        $this->importBook($ean);
+        $ean = str_replace ('-','',$form_state->getValue('ean'));
+        $ean = trim($ean);
+        $data = $this->vlbService->getBookData($ean);
+        $tids = $this->vlbService->getMappingCategories();
+        if(!empty($tids)){
+            $this->importBook($ean);
+        }else{
+            //open new form for onix-mapping
+            $tempstore = \Drupal::service('user.private_tempstore')->get('wh_import_ui');
+            $tempstore->set('ean', $ean);
+
+            //set new Categories
+            $tempstore->set('new_categories', $data['category_codes']);
+
+            //Redirect to mapping form
+            $form_state->setRedirect('wh_import_ui.mapping_form');
+        }     
     }
 }

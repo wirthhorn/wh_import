@@ -45,6 +45,16 @@ class ConfigForm extends ConfigFormBase {
       '#size' => 64,
       '#default_value' => $config->get('cover_token'),
     ];
+    $form['book_categories'] = [
+      '#type' => 'textarea',
+      '#title' => t('Book categories'),
+      '#default_value' => $config->get('book_categories'),
+    ];
+    $form['book_publisher'] = [
+      '#type' => 'textarea',
+      '#title' => t('Book publisher'),
+      '#default_value' => $config->get('book_publisher'),
+    ];
     return parent::buildForm($form, $form_state);
   }
 
@@ -65,6 +75,8 @@ class ConfigForm extends ConfigFormBase {
       ->set('n', $form_state->getValue('n'))
       ->set('metadata_token', $form_state->getValue('metadata_token'))
       ->set('cover_token', $form_state->getValue('cover_token'))
+      ->set('book_categories', $form_state->getValue('book_categories'))
+      ->set('book_publisher', $form_state->getValue('book_publisher'))
       ->save();
   }
 
