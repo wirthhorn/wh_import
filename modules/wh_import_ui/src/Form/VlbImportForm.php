@@ -53,6 +53,8 @@ class VlbImportForm extends FormBase
             $manually = true;
             $bookNode = $this->vlbService->reImportBook($manually);
 
+
+
             $url = $bookNode->toUrl('edit-form')->toString();
             drupal_set_message("Book re/imported successfully!\n");
             $rendered_message = \Drupal\Core\Render\Markup::create('<a href="' . $url . '">Klick here to edit it.</a>');
@@ -126,22 +128,28 @@ class VlbImportForm extends FormBase
      */
     public function submitForm(array &$form, FormStateInterface $form_state)
     {
-        $ean = str_replace ('-','',$form_state->getValue('ean'));
-        $ean = trim($ean);
-        $data = $this->vlbService->getBookData($ean);
-        $tids = $this->vlbService->getMappingCategories();
-        if(!empty($tids)){
-            $this->importBook($ean);
-        }else{
-            //open new form for onix-mapping
-            $tempstore = \Drupal::service('user.private_tempstore')->get('wh_import_ui');
-            $tempstore->set('ean', $ean);
-
-            //set new Categories
-            $tempstore->set('new_categories', $data['category_codes']);
-
-            //Redirect to mapping form
-            $form_state->setRedirect('wh_import_ui.mapping_form');
-        }     
+        $ean = '';
+        try{
+            $ean = str_replace ('-','',$form_state->getValue('ean'));
+            $ean = trim($ean);
+            $data = $this->vlbService->getBookData($ean);
+            $tids = $this->vlbService->getMappingCategories();
+            if(!empty($tids)){
+                $this->importBook($ean);
+            }else{
+                //open new form for onix-mapping
+                $tempstore = \Drupal::service('user.private_tempstore')->get('wh_import_ui');
+                $tempstore->set('ean', $ean);
+    
+                //set new Categories
+                $tempstore->set('new_categories', $data['category_codes']);
+    
+                //Redirect to mapping form
+                $form_state->setRedirect('wh_import_ui.mapping_form');
+            }  
+        }catch(\Exception $e){
+            \Drupal::logger('wh_import_ui')->error("Import failed. '.$ean.' Exception: ".$e->getMessage());
+            drupal_set_message("Import failed. '.$ean.' Exception: ".$e->getMessage(), 'error');
+        }       
     }
 }

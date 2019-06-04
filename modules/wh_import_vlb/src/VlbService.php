@@ -80,51 +80,9 @@ class VlbService
     }
 
     public function getAllEans(){      
-      // $verlage = array('Droemer Knaur','S. Fischer','Argon','Droemer','S.Fischer','Rowohlt','Kiepenheuer & Witsch','Droemer eBook',
-      // 'Fischer digiBook','Rowohlt Berlin','E-Books im Verlag Kiepenheuer & Witsch','Argon Sauerländer Audio ein Imprint von Argon', 'Droemer Taschenbuch',
-      // 'Fischer Digital','ROWOHLT Kindler','Argon Balance ein Imprint v. Argon Verlag', 'Knaur',
-      // 'Fischer E-Books','ROWOHLT Polaris','Knaur eBook','Fischer FJB','ROWOHLT Repertoire','Knaur Taschenbuch','Fischer HC','ROWOHLT Taschenbuch',
-      // 'Knaur Balance','Fischer Kinder-und Jugendbuch E-Book','ROWOHLT Wunderlich','Knaur Balance eBook','Fischer Kinder-und Jugendtaschenbuch','Ro Ro Ro',
-      // 'Groh','Fischer KJB','Rowohlt e-Book','Pattloch Geschenkbuch','Fischer Krüger','Rowohlt Hundertaugen','Fischer Sauerländer','Fischer Scherz','Fischer Taschenbuch',
-      // 'Fischer TOR','Feelings');
-
-      // // $verlage = array('Fischer E-Books');
-
-      // $search_verlage = array();
-      // foreach($verlage as $verlag){
-      //   $search_verlage[] = 'vl='.$verlag;
-      // }
-      // $search_verlage_str = implode(" oder ",$search_verlage);
-
       $config = \Drupal::config('wh_import_vlb.config');
       $search_verlage_str = $config->get('book_publisher');
       $onix_codes_str = $config->get('book_categories');
-      
-      // $onix_codes = array();
-      // //get VLB Codes
-      // $query = \Drupal::entityQuery('taxonomy_term')
-      // ->condition('field_v_bc_mass_import',1)
-      // ->condition('vid', 'v_book_category');
-      // $v_book_category_tids = $query->execute();
-      // $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
-      // foreach($v_book_category_terms as $term){
-      //   $v_bc_onix_codes = $term->get("field_v_bc_onix_code")->getValue();
-      //   foreach($v_bc_onix_codes as $v_bc_onix_code){
-      //     $v_bc_onix_code = $v_bc_onix_code['value'];
-      //     if(strpos($v_bc_onix_code, '+') != false){
-      //       $v_bc_onix_codes = explode('+', $v_bc_onix_code);
-      //       $categories_th = array();
-      //       foreach($v_bc_onix_codes as $v_bc_onix_code){
-      //         $categories_th[] = 'th='.$v_bc_onix_code;
-      //       }
-      //       $categories_th_str = implode(" und ",$categories_th);
-      //       $onix_codes[] = '('.$categories_th_str.')';
-      //     }else{
-      //       $onix_codes[] = 'th='.$v_bc_onix_code;
-      //     }
-      //   }
-      // }
-      // $onix_codes_str = implode(" oder ",$onix_codes);
  
       //dates
       $today = new \Drupal\Core\Datetime\DrupalDateTime('today 00:00:00', 'UTC');
@@ -135,9 +93,10 @@ class VlbService
 
       $last_modified = 'AD='.$last_days_str.'^'.$today_str.' oder ZD='.$last_days_str.'^'.$today_str;
       $search_str = '('.$search_verlage_str.') und ('.$onix_codes_str.') und ('.$last_modified.') und db=vlb';
-       \Drupal::logger('wh_import_vlb')->notice($search_str);
+
+      \Drupal::logger('wh_import_vlb')->notice($search_str);
+
       $search_str = urlencode($search_str);
-      // \Drupal::logger('wh_import_vlb')->notice($search_str);
 
       $responseData = array();
       $data = array();
@@ -515,6 +474,7 @@ class VlbService
     private function getCover($mediaFiles){
       $cover = array();
       $cover_size_drupal = NULL;
+      $not_in_cloudinary = false;
 
       //get cover id from vlb
       $media_keys = $this->findInArray($mediaFiles, 'type', '04');
@@ -546,6 +506,14 @@ class VlbService
         $book = \Drupal\node\Entity\Node::load($book_id);
         $file = $book->field_book_cover->entity;
         $cover_size_drupal = intval($file->filesize->value);
+
+        //check, if exists in cloudinary
+        $uri = $file->getFileUri();
+        $url = file_create_url($uri);
+        $file_headers = @get_headers($url);
+        if(!$file_headers || $file_headers[0] == 'HTTP/1.1 404 Not Found') {
+          $not_in_cloudinary = true;
+        }
       }
 
       $vlb_request = 'https://api.vlb.de/api/v1/cover/'.$this->ean.'/l';
@@ -559,17 +527,16 @@ class VlbService
       // Destination file to download
       $destination = $this->cover_dir.'/cover_'.$this->ean.'.jpg';
       $client = \Drupal::httpClient();
-
+      
       //get cover-size from vlb
       try {
         $response = $client->request('GET', $vlb_request, $options);
-
         $code = $response->getStatusCode();
         if ($code == 200) {
           $data = (string) $response->getBody();
           $cover_size_vlb = strlen($data);
           //check book cover-size changed -> import
-          if($cover_size_vlb != $cover_size_drupal){
+          if($cover_size_vlb != $cover_size_drupal || $not_in_cloudinary){
             $local = file_save_data($data, $destination, FILE_EXISTS_REPLACE);
             $cover['fid'] = $local->id();
             $this->setLogMessage("Cover re/import!");
@@ -711,13 +678,14 @@ class VlbService
       $biography = '';
       if(!empty($person['biographicalNote'])){
         $biography = $person['biographicalNote'];
-      }else{
-        foreach($this->data['biographies'] as $biographie_searchstr){
-          if (strpos($biographie_searchstr, $person['lastName']) !== false) {
-            $biography = $biographie_searchstr;
-          }
-        }
       }
+      // else{
+      //   foreach($this->data['biographies'] as $biographie_searchstr){
+      //     if (strpos($biographie_searchstr, $person['lastName']) !== false) {
+      //       $biography = $biographie_searchstr;
+      //     }
+      //   }
+      // }
       return $biography;
     }
 
@@ -725,30 +693,30 @@ class VlbService
       $price_old = floatval($node->field_book_old_price->value);
       $price_old_log = $price_old;
 
-      //ceep care of old prices from typo3
-      $price_old_typo3 = $this->getOldPriceFromTypo3();
-      if((!is_null($price_old_typo3)) && (isset($price_old)) && ($price_old_typo3 > $price_old)){
-        // dpm('set $price_old from typo3 - ($price_old_typo3 > $price_old): '.$price_old_typo3);
-        $price_old = $price_old_typo3;
-        $node->set('field_book_old_price', $price_old_typo3);
-      }elseif((!is_null($price_old_typo3)) && (!isset($price_old))){
-        // dpm('set $price_old from typo3 - (!isset($price_old)): '.$price_old_typo3);
-        $price_old = $price_old_typo3;
-        $node->set('field_book_old_price', $price_old_typo3);
-      }
+      // //ceep care of old prices from typo3
+      // $price_old_typo3 = $this->getOldPriceFromTypo3();
+      // if((!is_null($price_old_typo3)) && (isset($price_old)) && ($price_old_typo3 > $price_old)){
+      //   // dpm('set $price_old from typo3 - ($price_old_typo3 > $price_old): '.$price_old_typo3);
+      //   $price_old = $price_old_typo3;
+      //   $node->set('field_book_old_price', $price_old_typo3);
+      // }elseif((!is_null($price_old_typo3)) && (!isset($price_old))){
+      //   // dpm('set $price_old from typo3 - (!isset($price_old)): '.$price_old_typo3);
+      //   $price_old = $price_old_typo3;
+      //   $node->set('field_book_old_price', $price_old_typo3);
+      // }
 
       $price_until_now = floatval($node->field_book_price->value);
       $price_until_now_log = $price_until_now;
 
-      if((!is_null($price_old_typo3)) && (isset($price_until_now)) && ($price_until_now < $price_old_typo3) ){
-        //correct price
-        $price_until_now = $price_old_typo3;
-        // dpm('korrect price: $price_until_now = '.$price_until_now.'-------------------------------------------------------------------------------------------------------');
-      }
+      // if((!is_null($price_old_typo3)) && (isset($price_until_now)) && ($price_until_now < $price_old_typo3) ){
+      //   //correct price
+      //   $price_until_now = $price_old_typo3;
+      //   // dpm('korrect price: $price_until_now = '.$price_until_now.'-------------------------------------------------------------------------------------------------------');
+      // }
 
-      if((!is_null($price_old_typo3)) && ($price_old_typo3 > floatval($this->data["price"]))){
-        //\Drupal::logger('wh_import_batch')->notice("Import old value from typo3 ".$price_old_typo3.' / '.$this->data["price"].' - EAN: '.$this->ean);
-      }
+      // if((!is_null($price_old_typo3)) && ($price_old_typo3 > floatval($this->data["price"]))){
+      //   //\Drupal::logger('wh_import_batch')->notice("Import old value from typo3 ".$price_old_typo3.' / '.$this->data["price"].' - EAN: '.$this->ean);
+      // }
 
       if(isset($this->data['price'])){
         $price_new = floatval($this->data['price']);
@@ -917,7 +885,8 @@ class VlbService
             $node = Node::create(['type' => 'person']);
             $node->set('title', $person['lastName']);
             $node->set('field_person_forename', $person['firstName']);
-            $node->set('field_person_description', $this->getBiorgraphy($person));
+            // $node->set('field_person_description', $this->getBiorgraphy($person));
+            $node->set('field_person_description', $person['biographicalNote']);
             $node->set('field_person_onix_type', $person['type']);
             $node->set('uid', \Drupal::currentUser()->id());
             $node->status = 1;
@@ -1054,7 +1023,7 @@ class VlbService
       }
       $tids = array();
       $onix_codes = array();
-      //get Mapped Taxonomy Terms for mass-import
+      //get Mapped Taxonomy Terms
       $query = \Drupal::entityQuery('taxonomy_term')->condition('vid', 'v_book_category');
       $v_book_category_tids = $query->execute();
       $v_book_category_terms = \Drupal\taxonomy\Entity\Term::loadMultiple($v_book_category_tids);
@@ -1097,37 +1066,11 @@ class VlbService
       }
       return $tids;
     }
-    
+
+
     public function setCategories(&$node){
       if(!empty($this->data['category_codes'])){
         $tids = $this->getMappingCategories();
-
-        //get new ONIX-categories, if no other exist
-        //get existing ONIX-categories
-        $query = \Drupal::entityQuery('taxonomy_term')
-          ->condition('field_v_bc_onix_code', $this->data['category_codes'], 'IN')
-          ->condition('vid', 'v_book_category');
-        $existing_categories = $query->execute();
-
-        //create only new Terms, if no category exist for this book
-        if(empty($existing_categories)){
-          //create Taxonomy-Term foreach new ONIX-category
-          foreach($this->data['category_codes'] as $new_categorie){
-            try{
-              $term = \Drupal\taxonomy\Entity\Term::create(array(
-                'parent' => array(),
-                'name' => 'TBD '.$new_categorie,
-                'field_v_bc_onix_code' => $new_categorie,
-                'vid' => 'v_book_category',
-              ));
-              $term->save();
-              $tids[] = $term->id();
-            }catch(\Exception $e){
-              throw new \Exception("Import failed! Cannot creat new ONIX-category-Term for the book.".' - '.$e->getMessage());
-            }
-          }
-          $this->new_book_categories = $tids;
-        }
 
         $tids = array_unique($tids);
                 

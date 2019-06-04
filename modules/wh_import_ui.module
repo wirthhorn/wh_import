@@ -37,23 +37,13 @@ function wh_import_ui_cron() {
   //get all books
   $import_service = \Drupal::service('wh_import_vlb.vlb');
   $eans = $import_service->getAllEans();
-  \Drupal::logger('wh_import_ui_cron')->notice("getAllEans: ".count($eans));
-  $manually_eans = $import_service->getManuallyImportedEans();
-  \Drupal::logger('wh_import_ui_cron')->notice("getManuallyImportedEans: ".count($manually_eans));
-  $total = count($eans) + count($manually_eans);
+  $total = count($eans);
   //get log-prefix
   $config = \Drupal::config('system.site');
   $site_name = $config->get('name');
   $log_prefix = format_date(time(), 'custom', 'dmy_His');
   $i = 0;
   foreach ($eans as $ean) {
-    $i++;
-    // Create item to queue.
-    $data = (object) ['ean' => $ean, 'count' => $i, 'total' => $total, 'log_prefix' => $log_prefix];
-    $queue->createItem($data);
-  }
-  //update also manually imported books
-  foreach ($manually_eans as $ean) {
     $i++;
     // Create item to queue.
     $data = (object) ['ean' => $ean, 'count' => $i, 'total' => $total, 'log_prefix' => $log_prefix];
@@ -72,21 +62,13 @@ function wh_import_ui_mycron() {
   //get all books
   $import_service = \Drupal::service('wh_import_vlb.vlb');
   $eans = $import_service->getAllEans();
-  $manually_eans = $import_service->getManuallyImportedEans();
-  $total = count($eans) + count($manually_eans);
+  $total = count($eans);
   //get log-prefix
   $config = \Drupal::config('system.site');
   $site_name = $config->get('name');
   $log_prefix = format_date(time(), 'custom', 'dmy_His').'_'.$site_name;
   $i = 0;
   foreach ($eans as $ean) {
-    $i++;
-    // Create item to queue.
-    $data = (object) ['ean' => $ean, 'count' => $i, 'total' => $total, 'log_prefix' => $log_prefix];
-    $queue->createItem($data);
-  }
-  //update also manually imported books
-  foreach ($manually_eans as $ean) {
     $i++;
     // Create item to queue.
     $data = (object) ['ean' => $ean, 'count' => $i, 'total' => $total, 'log_prefix' => $log_prefix];
@@ -100,6 +82,9 @@ function logImport($message, $log_prefix){
   error_log($message . PHP_EOL, 3, $log_path);
 }
 
-// $queue = \Drupal::queue('vlb_queue');
-// $res = $queue->deleteQueue();
-// dpm($res);
+/**  
+ * Implements hook_field_widget_WIDGET_TYPE_form_alter().  
+ */  
+function wh_import_field_widget_paragraphs_form_alter(&$element, &$form_state, $context) {
+  dpm('test');
+}

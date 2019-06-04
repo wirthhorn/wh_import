@@ -38,7 +38,7 @@ class VlbController extends ControllerBase {
   public function importAction($action) {
     switch ($action) {
       case 'testAction':
-          $this->geEans();
+          $this->getEans();
           $this->testAction();
           break;
       case 'batchProcess':
