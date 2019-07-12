@@ -41,12 +41,54 @@ class VlbBatchController {
     }
   }
 
+  public function checkImportBooks() {
+    try {
+
+      $batch = array(
+        'title' => t('importing books'),
+        'init_message'     => t('Start importing books'),
+        'progress_message' => t('Processed @current out of @total.'),
+        'error_message'    => t('An error occurred during processing'),
+        'finished' => 'batchFinished',
+        //'file' => drupal_get_path('module', 'demo_batch') . '/demo_batch.mybatch.inc',
+      );
+      //loop over nids
+      $eans = $this->getimportedEans();
+      $limit = 0;
+      foreach ($eans as $ean) {
+        // $limit++;
+        // if($limit > 20){
+        //   break;
+        // }
+        $batch['operations'][] = ['\Drupal\wh_import_ui\Controller\VlbController::checkImportBook',[$ean]];
+      }
+      batch_set($batch);
+      return batch_process('user');
+    }catch (\Exception $e) {
+      \Drupal::logger('wh_import_batch')->error($e->getMessage());
+    }
+  }
+
   private function getEans(){
+
+  
+
     //get all books
     $import_service = \Drupal::service('wh_import_vlb.vlb');
     $eans = $import_service->getAllEans();
     return $eans;
   }
+
+  private function getimportedEans(){
+
+  
+    $query = \Drupal::entityQuery('node');
+ 
+     $query->condition('type', 'book');
+     $entity_ids = $query->execute();
+     return $entity_ids;
+ 
+   }
 
   public function batchFinished($success, $results, $operations) {
     \Drupal::logger('wh_import_batch')->notice('$success: '.$success.' - $results: '.$results.' - $operations: '.$operations);

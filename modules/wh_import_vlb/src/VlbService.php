@@ -94,6 +94,9 @@ class VlbService
       $last_modified = 'AD='.$last_days_str.'^'.$today_str.' oder ZD='.$last_days_str.'^'.$today_str;
       $search_str = '('.$search_verlage_str.') und ('.$onix_codes_str.') und ('.$last_modified.') und db=vlb';
 
+      //all days
+      // $search_str = '('.$search_verlage_str.') und ('.$onix_codes_str.') und db=vlb';
+
       \Drupal::logger('wh_import_vlb')->notice($search_str);
 
       $search_str = urlencode($search_str);
@@ -215,6 +218,8 @@ class VlbService
                     $data['publishers'] = $this->getPublishers($var['publishers']);
                     $data['series'] = $this->getSeries($var['collections']);
                     $data['availability'] = $var['availabilityStatusCode'];
+                    $data['createdDate'] = $var['createdDate'];
+                    $data['lastModifiedDate'] = $var['lastModifiedDate'];
                     // dpm($data);
                 }else{
                   throw new \Exception("Import failed! VLB code: ".$code);
@@ -915,6 +920,10 @@ class VlbService
               $updated = true;
             }
             if($updated){
+              $node->setNewRevision(TRUE);
+              $node->setRevisionLogMessage('Book reImport');
+              $node->setRevisionCreationTime(REQUEST_TIME);
+              $node->setRevisionUserId(\Drupal::currentUser()->id());
               $node->save();
             }
             $personNode['nid'] = $node->id();
@@ -940,6 +949,10 @@ class VlbService
         // }
         if($this->bookExists($this->ean)){
           $node = $this->updateBookNode();
+          $node->setNewRevision(TRUE);
+          $node->setRevisionLogMessage('Book reImport');
+          $node->setRevisionCreationTime(REQUEST_TIME);
+          $node->setRevisionUserId(\Drupal::currentUser()->id());
         }else{
           $node = $this->createBookNode();
         }
@@ -1018,11 +1031,19 @@ class VlbService
     }
 
     public function getMappingCategories(){
+
       if(empty($this->data['category_codes'])){
         return null;
       }
       $tids = array();
       $onix_codes = array();
+
+      $book_vals_str = '';
+      foreach($this->data['category_codes'] as $book_val){
+        $book_vals_str .= ','.$book_val;
+      }
+
+
       //get Mapped Taxonomy Terms
       $query = \Drupal::entityQuery('taxonomy_term')->condition('vid', 'v_book_category');
       $v_book_category_tids = $query->execute();
@@ -1031,40 +1052,94 @@ class VlbService
         $v_bc_onix_codes = $term->get("field_v_bc_onix_code")->getValue();
         foreach($v_bc_onix_codes as $v_bc_onix_code){
           //get field-value
-          $v_bc_onix_code = $v_bc_onix_code['value'];
-          //get +placeholder-terms / start
-          //check, if category contains +placeholer und plit at +
-          //get all placeholder categories saved in drupal like FH*
-          $category_placeholder = '*';//category-placeholder
-          $and_category_placeholder = '+';//and-placeholder
-          $v_bc_onix_codes = explode(',', $v_bc_onix_code);
-          for($i=0; $i < count($v_bc_onix_codes); $i++){
-            //get *placeholder-terms / start
-            //check, if category contains *placeholer und get *placeholer-position
-            //get all placeholder categories saved in drupal like FH*
-            $placeholer_pos = strpos($v_bc_onix_codes[$i], $category_placeholder);
-            if($placeholer_pos !== false){
-              $short_v_bc_onix_code = substr($v_bc_onix_codes[$i],0,$placeholer_pos);
-              //search short_onix_code in vlb-array
-              foreach($this->data['category_codes'] as $vlb_category_code){
-                $short_vlb_category_code = substr($vlb_category_code,0,$placeholer_pos);
-                if($short_vlb_category_code === $short_v_bc_onix_code){
-                  $tids[] = $term->id();
-                }
-              }
-            }//get *placeholder-terms / end
-            else{//get matching-terms / start
-              //search onix_code in vlb-array
-              foreach($this->data['category_codes'] as $vlb_category_code){
-                if($vlb_category_code === $v_bc_onix_codes[$i]){
-                  $tids[] = $term->id();
-                }
-              }
-            }//get matching-terms / end
-          }//get +placeholder-terms / end
+          $term_val = $v_bc_onix_code['value'];
+          if($this->match_string($term_val, $book_vals_str)){
+            $onix_codes[] = $term_val;
+          }
         }
       }
+ 
+
+      if(!empty($onix_codes)){
+        $query = \Drupal::entityQuery('taxonomy_term')
+        ->condition('field_v_bc_onix_code',$onix_codes,'IN')
+        ->condition('vid', 'v_book_category');
+        $tids = $query->execute();
+      }
+
       return $tids;
+    }
+
+
+    private function match_star_string($term_val, $book_val){
+
+      $regex_str = str_replace('*','.*',$term_val);
+      $match = preg_match('/\b'.$regex_str.'\b/', $book_val);
+      return $match;
+    }
+
+    private function match_plus_string($term_val, $book_val){
+      $term_vals = explode('+', $term_val);
+      $count_matches = 0;
+
+      foreach($term_vals as $term_val_single){
+        if($this->match_string($term_val_single, $book_val)){
+          $count_matches++;
+        }
+      }
+
+      $match = ($count_matches == count($term_vals));
+
+      //matching all
+      return $match;
+
+    }
+    
+
+    public function checkNode($nid){
+      $node = \Drupal::entityManager()->getStorage('node')->load($nid);
+      $book_vals = $node->get("field_book_category_onix_code")->getValue();
+      // dpm('$book_vals');
+      // dpm($book_vals);
+      $book_vals_str = '';
+      foreach($book_vals as $book_val){
+        $book_vals_str .= ','.$book_val['value'];
+      }
+
+            
+      $config = \Drupal::config('wh_import_vlb.config');
+      $search_verlage_str = $config->get('book_publisher');
+      $onix_codes_str = $config->get('book_categories');
+
+      $term_val = str_replace('th=','', $onix_codes_str);
+      $term_val = str_replace(' oder ',',', $term_val);
+      $term_val = str_replace(' und ','+', $term_val);
+      $term_val = str_replace('(','', $term_val);
+      $term_val = str_replace(')','', $term_val);
+ 
+      $term_vals = explode(',', $term_val);
+
+      foreach($term_vals as $term_val){
+        if($this->match_string($term_val, $book_vals_str)){
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    private function match_string($term_val, $book_val){
+      //check für * and +
+      if(preg_match('/\+/', $term_val)){
+        // dpm('has +');
+        return $this->match_plus_string($term_val, $book_val);
+      }elseif(preg_match('/\*/', $term_val)){
+        // dpm('has *');
+        return $this->match_star_string($term_val, $book_val);
+      }else{
+        // dpm('else');
+        return preg_match('/\b'.$term_val.'\b/', $book_val);
+      }
     }
 
 

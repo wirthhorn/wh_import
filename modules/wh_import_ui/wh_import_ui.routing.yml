@@ -28,7 +28,7 @@ wh_import_ui.vlb_controller_importAction:
     _role: 'administrator'
 
 wh_import_ui.vlb_controller_importBook:
-  path: '/wh_import_ui/importBook/vlb/{nid}'
+  path: '/wh_import_ui/importBook/vlb/{ean}'
   defaults:
     _controller: '\Drupal\wh_import_ui\Controller\VlbController::importBook'
     _title: 'import Book'
@@ -40,6 +40,14 @@ wh_import_ui.batch_controller_importBooks:
   path: '/batchImport/vlb/auth'
   defaults:
     _controller: '\Drupal\wh_import_ui\Controller\VlbBatchController::importBooks'
+    _title: 'import Books'
+  requirements:
+    _role: 'administrator'
+
+wh_import_ui.batch_controller_checkImportBooks:
+  path: '/batchImport/vlb/check'
+  defaults:
+    _controller: '\Drupal\wh_import_ui\Controller\VlbBatchController::checkImportBooks'
     _title: 'import Books'
   requirements:
     _role: 'administrator'
